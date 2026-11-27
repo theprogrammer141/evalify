@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser, type AuthenticatedUser } from "@/lib/auth/session";
 import type { UserRole } from "@/lib/db/schema";
@@ -33,6 +33,7 @@ export async function authorizeApi(
 }
 
 export async function requirePageUser(): Promise<AuthenticatedUser> {
+  await connection();
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in");
   return user;

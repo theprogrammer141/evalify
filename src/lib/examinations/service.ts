@@ -18,6 +18,7 @@ import {
   examinationSchema,
   getAvailabilityState,
   getPublicationIssues,
+  isWithinAvailabilityWindow,
   type ExaminationInput,
   type ExaminationUpdateInput,
   type QuestionInput,
@@ -43,7 +44,7 @@ function publishedAvailability(
   now: Date,
 ): Exclude<AvailabilityState, "draft"> {
   if (endsAt <= now) return "completed";
-  if (startsAt > now) return "upcoming";
+  if (!isWithinAvailabilityWindow(startsAt, endsAt, now)) return "upcoming";
   return "ongoing";
 }
 
@@ -760,11 +761,19 @@ export async function getCandidateExamination(
 
   if (!record) return null;
 
+  const { examination, enrolledAt } = record;
+  const now = new Date();
+  const availability = publishedAvailability(
+    examination.startsAt,
+    examination.endsAt,
+    now,
+  );
+  if (availability !== "ongoing") return null;
+
   const assignedQuestions = await db
     .select({ id: examinationQuestions.id })
     .from(examinationQuestions)
     .where(eq(examinationQuestions.examinationId, examinationId));
-  const { examination, enrolledAt } = record;
 
   return {
     id: examination.id,
@@ -775,11 +784,7 @@ export async function getCandidateExamination(
     durationMinutes: examination.durationMinutes,
     publishedAt: examination.publishedAt,
     enrolledAt,
-    availability: publishedAvailability(
-      examination.startsAt,
-      examination.endsAt,
-      new Date(),
-    ),
+    availability,
     questionCount: assignedQuestions.length,
     totalMarks: examination.totalMarks,
   };

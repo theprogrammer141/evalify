@@ -4,6 +4,7 @@ import {
   examinationSchema,
   getAvailabilityState,
   getPublicationIssues,
+  isWithinAvailabilityWindow,
   questionSchema,
 } from "@/lib/examinations/validation";
 
@@ -148,4 +149,20 @@ test("availability is derived from server time and published status", () => {
     getAvailabilityState("PUBLISHED", start, end, end),
     "completed",
   );
+});
+
+test("candidate availability opens at the start and closes at the end", () => {
+  const start = new Date("2027-01-01T10:00:00.000Z");
+  const end = new Date("2027-01-01T12:00:00.000Z");
+
+  assert.equal(
+    isWithinAvailabilityWindow(start, end, new Date(start.getTime() - 1)),
+    false,
+  );
+  assert.equal(isWithinAvailabilityWindow(start, end, start), true);
+  assert.equal(
+    isWithinAvailabilityWindow(start, end, new Date(end.getTime() - 1)),
+    true,
+  );
+  assert.equal(isWithinAvailabilityWindow(start, end, end), false);
 });
