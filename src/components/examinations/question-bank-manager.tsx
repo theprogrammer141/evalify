@@ -18,6 +18,7 @@ type Question = {
   marks: number;
   options: QuestionOption[];
   answerKey: string[];
+  markingGuidelines: string;
   updatedAt: Date | string;
 };
 
@@ -53,6 +54,7 @@ function blankDraft(): QuestionDraft {
       { id: secondOption, text: "" },
     ],
     answerKey: [firstOption],
+    markingGuidelines: "",
   };
 }
 
@@ -65,6 +67,7 @@ function draftFromQuestion(question: Question): QuestionDraft {
     marks: question.marks,
     options: question.options.map((option) => ({ ...option })),
     answerKey: [...question.answerKey],
+    markingGuidelines: question.markingGuidelines ?? "",
   };
 }
 
@@ -386,10 +389,28 @@ export function QuestionBankManager({
           )}
 
           {draft.type === "WRITTEN_RESPONSE" && (
-            <p className="border-l-2 border-[#182d2b] pl-4 text-sm leading-6 text-muted-foreground md:col-span-2">
-              Written responses use the assigned marks for examiner review and
-              do not have objective answer options.
-            </p>
+            <>
+              <label className="block text-sm font-medium md:col-span-2">
+                Marking guidelines
+                <textarea
+                  className={`${fieldClass} min-h-28 resize-y py-3`}
+                  maxLength={8000}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      markingGuidelines: event.target.value,
+                    }))
+                  }
+                  placeholder="Optional criteria to help examiners assess this response consistently."
+                  rows={3}
+                  value={draft.markingGuidelines}
+                />
+              </label>
+              <p className="border-l-2 border-[#182d2b] pl-4 text-sm leading-6 text-muted-foreground md:col-span-2">
+                Written responses are assessed by an examiner within the
+                question&apos;s assigned marks.
+              </p>
+            </>
           )}
 
           <div className="flex flex-col gap-3 md:col-span-2 sm:flex-row sm:items-center">

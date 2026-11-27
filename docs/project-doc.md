@@ -168,6 +168,8 @@ Single-answer objective questions are graded against the stored marking scheme. 
 
 The system calculates totals from the attempt snapshot and accepted answers. Where an examination includes written responses, the result cannot be treated as ready for publication until manual grading is complete and the examiner has reviewed it. Publication is an explicit action, not an automatic consequence of submission or score calculation.
 
+Each submitted attempt has one persisted evaluation. Objective marks are recorded from the attempt's published question snapshot; written questions remain outstanding until an examiner records marks and feedback. Evaluation revisions are checked before writes, finalization locks ordinary grading, and an actor-attributed history records automatic grading, manual changes and finalization.
+
 ### Failure resilience and monitoring
 
 The candidate interface communicates whether the browser is online and whether the latest answer changes are pending, accepted or failed. Saves can be retried safely. On refresh or return, the server-confirmed attempt state is restored. The server clock continues during an outage; no reconnect operation extends the deadline.

@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { ArrowUpRight, CirclePlus, ClipboardList } from "lucide-react";
+import {
+  ArrowUpRight,
+  CirclePlus,
+  ClipboardCheck,
+  ClipboardList,
+} from "lucide-react";
 
 type ExaminationSummary = {
   id: string;
@@ -57,13 +62,22 @@ export function ExaminerDashboard({
             before an examination is published.
           </p>
         </div>
-        <Link
-          className="inline-flex min-h-11 items-center justify-center gap-2 bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:-translate-y-0.5 hover:bg-primary/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-          href="/examiner/examinations/new"
-        >
-          <CirclePlus aria-hidden="true" className="size-4" />
-          Create examination
-        </Link>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Link
+            className="inline-flex min-h-11 items-center justify-center gap-2 border border-border px-4 text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            href="/examiner/evaluations"
+          >
+            <ClipboardCheck aria-hidden="true" className="size-4" />
+            Evaluation queue
+          </Link>
+          <Link
+            className="inline-flex min-h-11 items-center justify-center gap-2 bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:-translate-y-0.5 hover:bg-primary/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            href="/examiner/examinations/new"
+          >
+            <CirclePlus aria-hidden="true" className="size-4" />
+            Create examination
+          </Link>
+        </div>
       </section>
 
       <section aria-label="Examination overview" className="grid border-y border-border sm:grid-cols-3">
