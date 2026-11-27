@@ -5,6 +5,10 @@ import type { getExaminerIssuedReport } from "@/lib/reports/service";
 
 type PerformanceReport = Awaited<ReturnType<typeof getExaminerPerformanceReport>>;
 type CandidateReport = Awaited<ReturnType<typeof getExaminerIssuedReport>>;
+type PerformanceVerification = {
+  verificationUrl: string;
+  verificationToken: string;
+};
 
 const pageWidth = 595.28;
 const pageHeight = 841.89;
@@ -203,7 +207,10 @@ function drawTableHeading(
   });
 }
 
-export async function buildPerformanceReportPdf(report: PerformanceReport) {
+export async function buildPerformanceReportPdf(
+  report: PerformanceReport,
+  verification?: PerformanceVerification,
+) {
   const { document, regular, bold } = await makeDocument();
   const pages: PDFPage[] = [];
   const columns = [200, 115, 100, pageWidth - margin * 2 - 415];
@@ -229,10 +236,15 @@ export async function buildPerformanceReportPdf(report: PerformanceReport) {
   const summaryLines = [
     `Examination window: ${formatDate(report.opensAt)} - ${formatDate(report.closesAt)} UTC`,
     `Duration: ${report.durationMinutes} minutes`,
-    `Candidates with attempts: ${report.candidateCount}`,
-    `Finalized results: ${report.finalizedCount} of ${report.candidateCount}`,
+    `Enrolled candidates: ${report.enrolledCount}`,
+    `Submitted attempts: ${report.submittedCount}`,
+    `Participation rate: ${report.participationRate === null ? "Not available" : `${report.participationRate}%`}`,
+    `Finalized results: ${report.finalizedCount} of ${report.submittedCount}`,
     `Average finalized result: ${report.averagePercentage === null ? "Not available" : `${report.averagePercentage}%`}`,
-    `Highest finalized marks: ${report.highestMarks === null ? "Not available" : `${report.highestMarks}`}`,
+    `Highest finalized score: ${report.highestPercentage === null ? "Not available" : `${report.highestPercentage}% (${report.highestMarks} marks)`}`,
+    `Lowest finalized score: ${report.lowestPercentage === null ? "Not available" : `${report.lowestPercentage}% (${report.lowestMarks} marks)`}`,
+    `Pass rate: ${report.passRate === null ? "Not configured" : `${report.passRate}%`}`,
+    `Report status: ${report.reportStage === "PUBLISHED_RESULTS" ? "Published results" : "Internal examiner review"}`,
   ];
   drawLines(page, summaryLines, margin, y, regular, 9, ink, 15);
   y -= summaryLines.length * 15 + 18;
@@ -253,15 +265,17 @@ export async function buildPerformanceReportPdf(report: PerformanceReport) {
           ? "Published"
           : "Finalized"
         : candidate.evaluationStatus?.replaceAll("_", " ") ?? "Not evaluated";
-    const marks =
-      candidate.evaluationStatus === "FINALIZED" &&
-      candidate.totalMarks !== null
-        ? `${candidate.totalMarks} / ${candidate.maximumMarks}`
-        : `- / ${candidate.maximumMarks}`;
+    const statusWithMarks =
+      candidate.evaluationStatus === "FINALIZED"
+        ? status
+        : `${status} · auto ${candidate.autoMarks ?? 0}, manual ${candidate.manualMarks ?? 0} awarded`;
+    const marks = `${candidate.totalMarks ?? 0} / ${candidate.maximumMarks}${
+      candidate.evaluationStatus === "FINALIZED" ? "" : " so far"
+    }`;
     const values = [
       candidate.candidateEmail,
       formatDate(candidate.completedAt),
-      status,
+      statusWithMarks,
       marks,
     ];
     const wrapped = values.map((value, index) =>
@@ -293,6 +307,56 @@ export async function buildPerformanceReportPdf(report: PerformanceReport) {
       color: border,
     });
     y -= rowHeight;
+  }
+
+  if (verification) {
+    page = addPage(true);
+    const qrBytes = await QRCode.toBuffer(verification.verificationUrl, {
+      errorCorrectionLevel: "M",
+      margin: 1,
+      width: 168,
+    });
+    const qr = await document.embedPng(qrBytes);
+    page.drawText("REPORT VERIFICATION", {
+      x: margin,
+      y,
+      font: bold,
+      size: 9,
+      color: blue,
+    });
+    page.drawText(
+      "This reference confirms the report's authenticity and does not expose candidate records.",
+      {
+        x: margin,
+        y: y - 22,
+        font: regular,
+        size: 9,
+        color: muted,
+        maxWidth: pageWidth - margin * 2,
+      },
+    );
+    page.drawImage(qr, {
+      x: margin,
+      y: y - 170,
+      width: 132,
+      height: 132,
+    });
+    page.drawText(`Verification ID: ${verification.verificationToken}`, {
+      x: margin + 150,
+      y: y - 58,
+      font: regular,
+      size: 7.5,
+      color: ink,
+      maxWidth: pageWidth - margin * 2 - 150,
+    });
+    page.drawText(printableText(verification.verificationUrl), {
+      x: margin + 150,
+      y: y - 78,
+      font: regular,
+      size: 7.5,
+      color: muted,
+      maxWidth: pageWidth - margin * 2 - 150,
+    });
   }
 
   pages.forEach((currentPage, index) =>

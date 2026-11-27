@@ -20,7 +20,10 @@ import type {
   AttemptSnapshot,
   MarkingRules,
 } from "@/lib/attempts/types";
-import type { IssuedReportSnapshot } from "@/lib/reports/validation";
+import type {
+  IssuedReportSnapshot,
+  PerformanceReportSnapshot,
+} from "@/lib/reports/validation";
 
 export const userRole = pgEnum("user_role", [
   "ADMIN",
@@ -662,6 +665,42 @@ export const issuedReports = pgTable(
     check(
       "issued_reports_revocation_consistent",
       sql`(${table.status} = 'VALID' and ${table.revokedBy} is null and ${table.revokedAt} is null) or (${table.status} = 'REVOKED' and ${table.revokedBy} is not null and ${table.revokedAt} is not null)`,
+    ),
+  ],
+);
+
+export const examinationReports = pgTable(
+  "examination_reports",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    examinationId: uuid("examination_id")
+      .notNull()
+      .references(() => examinations.id, { onDelete: "restrict" }),
+    generatedBy: uuid("generated_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    verificationToken: varchar("verification_token", { length: 64 })
+      .notNull()
+      .unique(),
+    reportSnapshot: jsonb("report_snapshot")
+      .$type<PerformanceReportSnapshot>()
+      .notNull(),
+    generatedAt: timestamp("generated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("examination_reports_examination_generated_idx").on(
+      table.examinationId,
+      table.generatedAt,
+    ),
+    check(
+      "examination_reports_token_format",
+      sql`${table.verificationToken} ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      "examination_reports_snapshot_object",
+      sql`jsonb_typeof(${table.reportSnapshot}) = 'object'`,
     ),
   ],
 );

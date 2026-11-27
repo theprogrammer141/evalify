@@ -68,7 +68,9 @@ export default async function VerifyReportPage({ params }: PageProps) {
               </dd>
             </div>
             <div className="grid gap-1 py-4 sm:grid-cols-[10rem_1fr]">
-              <dt className="text-sm text-muted-foreground">Issued</dt>
+              <dt className="text-sm text-muted-foreground">
+                {verification.dateLabel}
+              </dt>
               <dd className="text-sm font-medium">
                 {formatDate(verification.issuedAt)} UTC
               </dd>

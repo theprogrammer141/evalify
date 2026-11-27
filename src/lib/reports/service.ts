@@ -2,14 +2,27 @@ import { randomBytes } from "node:crypto";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
+  attemptAnswers,
   attempts,
+  examinationEnrollments,
+  examinationReports,
   evaluations,
   examinations,
   issuedReports,
   users,
 } from "@/lib/db/schema";
 import { attemptSnapshotSchema } from "@/lib/attempts/validation";
-import { issuedReportSnapshotSchema } from "@/lib/reports/validation";
+import {
+  issuedReportSnapshotSchema,
+  performanceReportSnapshotSchema,
+  type PerformanceReportSnapshot,
+} from "@/lib/reports/validation";
+import {
+  aggregateQuestionAnalytics,
+  calculatePerformanceMetrics,
+  scorePercentage,
+  type CandidatePerformance,
+} from "@/lib/reports/analytics";
 
 export class ReportServiceError extends Error {
   constructor(
@@ -182,46 +195,281 @@ export async function getExaminerPerformanceReport(
     )
     .orderBy(asc(users.email));
 
-  const candidates = rows.map((row) => ({
-    candidateEmail: row.candidateEmail,
-    attemptStatus: row.attemptStatus,
-    completedAt: row.completedAt?.toISOString() ?? null,
-    evaluationStatus: row.evaluationStatus,
-    totalMarks: row.totalMarks,
-    autoMarks: row.autoMarks,
-    manualMarks: row.manualMarks,
-    maximumMarks: readMaximumMarks(row.snapshot),
-    published: row.publishedAt !== null,
-  }));
-  const finalized = candidates.filter(
-    (candidate) =>
-      candidate.evaluationStatus === "FINALIZED" &&
-      candidate.totalMarks !== null,
+  const enrollments = await db
+    .select({ id: examinationEnrollments.id })
+    .from(examinationEnrollments)
+    .where(eq(examinationEnrollments.examinationId, examinationId));
+  const eligibleRows = rows.filter(
+    (
+      row,
+    ): row is typeof row & {
+      attemptStatus: "SUBMITTED" | "EXPIRED";
+    } => row.attemptStatus !== "IN_PROGRESS",
   );
-  const averagePercentage =
-    finalized.length === 0
-      ? null
-      : finalized.reduce(
-          (total, candidate) =>
-            total +
-            ((candidate.totalMarks ?? 0) / candidate.maximumMarks) * 100,
-          0,
-        ) / finalized.length;
+  const candidates: (CandidatePerformance & { percentage: number | null })[] =
+    eligibleRows.map((row) => {
+      const maximumMarks = readMaximumMarks(row.snapshot);
+      const finalized =
+        row.evaluationStatus === "FINALIZED" && row.totalMarks !== null;
+      return {
+        candidateEmail: row.candidateEmail,
+        attemptStatus: row.attemptStatus,
+        completedAt: row.completedAt?.toISOString() ?? null,
+        evaluationStatus: row.evaluationStatus,
+        totalMarks: row.totalMarks,
+        autoMarks: row.autoMarks,
+        manualMarks: row.manualMarks,
+        maximumMarks,
+        published: row.publishedAt !== null,
+        percentage:
+          finalized && row.totalMarks !== null
+            ? scorePercentage(row.totalMarks, maximumMarks)
+            : null,
+      };
+    });
+  const metrics = calculatePerformanceMetrics(candidates, enrollments.length);
 
   return {
     ...examination,
     opensAt: examination.opensAt.toISOString(),
     closesAt: examination.closesAt.toISOString(),
     generatedAt: new Date().toISOString(),
-    candidateCount: candidates.length,
-    finalizedCount: finalized.length,
-    averagePercentage:
-      averagePercentage === null ? null : Math.round(averagePercentage * 10) / 10,
-    highestMarks:
-      finalized.length === 0
-        ? null
-        : Math.max(...finalized.map((candidate) => candidate.totalMarks ?? 0)),
+    ...metrics,
     candidates,
+  };
+}
+
+export async function listExaminerReportExaminations(examinerId: string) {
+  return db
+    .select({
+      id: examinations.id,
+      title: examinations.title,
+      status: examinations.status,
+      opensAt: examinations.opensAt,
+      closesAt: examinations.closesAt,
+    })
+    .from(examinations)
+    .where(eq(examinations.examinerId, examinerId))
+    .orderBy(desc(examinations.updatedAt), asc(examinations.title));
+}
+
+export async function getExaminerQuestionAnalytics(
+  examinerId: string,
+  examinationId: string,
+) {
+  const [examination] = await db
+    .select({ id: examinations.id })
+    .from(examinations)
+    .where(
+      and(
+        eq(examinations.id, examinationId),
+        eq(examinations.examinerId, examinerId),
+      ),
+    )
+    .limit(1);
+  if (!examination) throw new ReportServiceError("not_found", 404);
+
+  const attemptsWithSnapshots = await db
+    .select({ id: attempts.id, snapshot: attempts.snapshot })
+    .from(attempts)
+    .where(
+      and(
+        eq(attempts.examinationId, examinationId),
+        inArray(attempts.status, ["SUBMITTED", "EXPIRED"]),
+      ),
+    );
+  if (attemptsWithSnapshots.length === 0) {
+    return { examinationId, questions: [] };
+  }
+
+  const attemptIds = attemptsWithSnapshots.map((attempt) => attempt.id);
+  const answers = await db
+    .select({
+      attemptId: attemptAnswers.attemptId,
+      questionId: attemptAnswers.snapshotQuestionId,
+      answer: attemptAnswers.answer,
+    })
+    .from(attemptAnswers)
+    .where(inArray(attemptAnswers.attemptId, attemptIds));
+  const answersByAttempt = new Map<
+    string,
+    Map<string, (typeof answers)[number]["answer"]>
+  >();
+  for (const answer of answers) {
+    const attemptAnswersMap = answersByAttempt.get(answer.attemptId) ?? new Map();
+    attemptAnswersMap.set(answer.questionId, answer.answer);
+    answersByAttempt.set(answer.attemptId, attemptAnswersMap);
+  }
+
+  const questionAttempts = attemptsWithSnapshots.map((attempt) => {
+    const parsedSnapshot = attemptSnapshotSchema.safeParse(attempt.snapshot);
+    if (!parsedSnapshot.success) throw new Error("invalid_attempt_snapshot");
+    return {
+      snapshot: parsedSnapshot.data,
+      answers: answersByAttempt.get(attempt.id) ?? new Map(),
+    };
+  });
+  return {
+    examinationId,
+    questions: aggregateQuestionAnalytics(questionAttempts),
+  };
+}
+
+export async function listExaminerPerformanceReports(
+  examinerId: string,
+  examinationId: string,
+) {
+  const rows = await db
+    .select({
+      id: examinationReports.id,
+      generatedAt: examinationReports.generatedAt,
+      verificationToken: examinationReports.verificationToken,
+      reportSnapshot: examinationReports.reportSnapshot,
+      generatedByEmail: users.email,
+    })
+    .from(examinationReports)
+    .innerJoin(examinations, eq(examinationReports.examinationId, examinations.id))
+    .innerJoin(users, eq(examinationReports.generatedBy, users.id))
+    .where(
+      and(
+        eq(examinationReports.examinationId, examinationId),
+        eq(examinations.examinerId, examinerId),
+      ),
+    )
+    .orderBy(desc(examinationReports.generatedAt));
+
+  return rows.map((row) => {
+    const snapshot = performanceReportSnapshotSchema.parse(row.reportSnapshot);
+    return {
+      id: row.id,
+      generatedAt: row.generatedAt.toISOString(),
+      verificationToken: row.verificationToken,
+      generatedByEmail: row.generatedByEmail,
+      reportStage: snapshot.reportStage,
+      candidateCount: snapshot.submittedCount,
+    };
+  });
+}
+
+export async function saveExaminerPerformanceReport(
+  examinerId: string,
+  verificationToken: string,
+  report: PerformanceReportSnapshot,
+) {
+  const snapshot = performanceReportSnapshotSchema.parse(report);
+  return db.transaction(async (transaction) => {
+    const [examination] = await transaction
+      .select({ id: examinations.id })
+      .from(examinations)
+      .where(
+        and(
+          eq(examinations.id, snapshot.id),
+          eq(examinations.examinerId, examinerId),
+        ),
+      )
+      .limit(1);
+    if (!examination) throw new ReportServiceError("not_found", 404);
+
+    const [record] = await transaction
+      .insert(examinationReports)
+      .values({
+        examinationId: snapshot.id,
+        generatedBy: examinerId,
+        verificationToken,
+        reportSnapshot: snapshot,
+        generatedAt: new Date(snapshot.generatedAt),
+      })
+      .returning({
+        id: examinationReports.id,
+        generatedAt: examinationReports.generatedAt,
+        verificationToken: examinationReports.verificationToken,
+      });
+    return {
+      ...record,
+      generatedAt: record.generatedAt.toISOString(),
+      verificationUrl: `/verify/${record.verificationToken}`,
+    };
+  });
+}
+
+export async function getExaminerPerformanceReportRecord(
+  examinerId: string,
+  reportId: string,
+) {
+  const [record] = await db
+    .select({
+      id: examinationReports.id,
+      examinationId: examinationReports.examinationId,
+      generatedAt: examinationReports.generatedAt,
+      verificationToken: examinationReports.verificationToken,
+      reportSnapshot: examinationReports.reportSnapshot,
+    })
+    .from(examinationReports)
+    .innerJoin(examinations, eq(examinationReports.examinationId, examinations.id))
+    .where(
+      and(
+        eq(examinationReports.id, reportId),
+        eq(examinations.examinerId, examinerId),
+      ),
+    )
+    .limit(1);
+  if (!record) throw new ReportServiceError("not_found", 404);
+
+  return {
+    id: record.id,
+    examinationId: record.examinationId,
+    generatedAt: record.generatedAt.toISOString(),
+    verificationToken: record.verificationToken,
+    report: performanceReportSnapshotSchema.parse(record.reportSnapshot),
+  };
+}
+
+export async function getPublicReportVerification(token: string) {
+  if (!/^[a-f0-9]{64}$/.test(token)) return { status: "nonexistent" as const };
+
+  const [candidateReport] = await db
+    .select({
+      status: issuedReports.status,
+      issuedAt: issuedReports.issuedAt,
+      reportSnapshot: issuedReports.reportSnapshot,
+    })
+    .from(issuedReports)
+    .where(eq(issuedReports.verificationToken, token))
+    .limit(1);
+
+  if (candidateReport) {
+    const snapshot = readIssuedReportSnapshot(candidateReport.reportSnapshot);
+    return {
+      status:
+        candidateReport.status === "VALID"
+          ? ("valid" as const)
+          : ("revoked" as const),
+      reportType: "Candidate result report" as const,
+      examinationTitle: snapshot.examinationTitle,
+      dateLabel: "Issued" as const,
+      issuedAt: candidateReport.issuedAt.toISOString(),
+    };
+  }
+
+  const [performanceReport] = await db
+    .select({
+      generatedAt: examinationReports.generatedAt,
+      reportSnapshot: examinationReports.reportSnapshot,
+    })
+    .from(examinationReports)
+    .where(eq(examinationReports.verificationToken, token))
+    .limit(1);
+
+  if (!performanceReport) return { status: "nonexistent" as const };
+  const snapshot = performanceReportSnapshotSchema.parse(
+    performanceReport.reportSnapshot,
+  );
+  return {
+    status: "valid" as const,
+    reportType: "Examination performance report" as const,
+    examinationTitle: snapshot.title,
+    dateLabel: "Generated" as const,
+    issuedAt: performanceReport.generatedAt.toISOString(),
   };
 }
 
@@ -464,27 +712,4 @@ export async function listCandidateIssuedReports(candidateId: string) {
       publishedAt: snapshot.publishedAt,
     };
   });
-}
-
-export async function getPublicReportVerification(token: string) {
-  if (!/^[a-f0-9]{64}$/.test(token)) return { status: "nonexistent" as const };
-
-  const [report] = await db
-    .select({
-      status: issuedReports.status,
-      issuedAt: issuedReports.issuedAt,
-      reportSnapshot: issuedReports.reportSnapshot,
-    })
-    .from(issuedReports)
-    .where(eq(issuedReports.verificationToken, token))
-    .limit(1);
-
-  if (!report) return { status: "nonexistent" as const };
-  const snapshot = readIssuedReportSnapshot(report.reportSnapshot);
-  return {
-    status: report.status === "VALID" ? ("valid" as const) : ("revoked" as const),
-    reportType: "Candidate result report" as const,
-    examinationTitle: snapshot.examinationTitle,
-    issuedAt: report.issuedAt.toISOString(),
-  };
 }
