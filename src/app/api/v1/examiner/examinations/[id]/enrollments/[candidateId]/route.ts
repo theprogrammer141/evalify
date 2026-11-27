@@ -31,6 +31,12 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
       { status: 409 },
     );
   }
+  if (result.status === "attempt_started") {
+    return NextResponse.json(
+      { error: "candidate_attempt_exists" },
+      { status: 409 },
+    );
+  }
 
   return NextResponse.json({ removed: true });
 }

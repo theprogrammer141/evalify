@@ -7,12 +7,18 @@ async function migrate() {
   loadEnvConfig(process.cwd());
   const { sql } = await import("@/lib/db");
   try {
-    const migrationsPath = fileURLToPath(
-      new URL("../migrations/", import.meta.url),
-    );
+    const migrationsPath = fileURLToPath(new URL("../migrations/", import.meta.url));
     const migrationFiles = (await readdir(migrationsPath))
       .filter((file) => /^\d+_[\w-]+\.sql$/.test(file))
-      .sort();
+      .sort((left, right) => {
+        const leftVersion = Number(left.match(/^\d+/)?.[0]);
+        const rightVersion = Number(right.match(/^\d+/)?.[0]);
+        if (leftVersion !== rightVersion) return leftVersion - rightVersion;
+
+        if (left === "0002_examinations.sql") return -1;
+        if (right === "0002_examinations.sql") return 1;
+        return left.localeCompare(right);
+      });
 
     for (const file of migrationFiles) {
       const migration = await readFile(join(migrationsPath, file), "utf8");

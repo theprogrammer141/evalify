@@ -1,33 +1,59 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authorizeApi } from "@/lib/auth/authorization";
-import { attemptErrorResponse, invalidRequestResponse } from "@/lib/attempts/http";
-import { startCandidateAttempt } from "@/lib/attempts/service";
+import {
+  getCandidateAttempt,
+  startCandidateAttempt,
+} from "@/lib/monitoring/service";
 
-export async function POST(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+type RouteContext = { params: Promise<{ id: string }> };
+
+export async function GET(_request: Request, { params }: RouteContext) {
   const authorization = await authorizeApi("CANDIDATE");
   if (!authorization.authorized) return authorization.response;
 
   const { id } = await params;
   if (!z.uuid().safeParse(id).success) {
-    return invalidRequestResponse();
+    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }
 
-  try {
-    const attempt = await startCandidateAttempt(
-      authorization.user.id,
-      id,
-    );
-    return NextResponse.json(
-      { attempt },
-      {
-        headers: { "Cache-Control": "no-store" },
-      },
-    );
-  } catch (error) {
-    return attemptErrorResponse(error);
+  const attempt = await getCandidateAttempt(authorization.user.id, id);
+  if (!attempt) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
+
+  return NextResponse.json(
+    { attempt },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
+
+export async function POST(_request: Request, { params }: RouteContext) {
+  const authorization = await authorizeApi("CANDIDATE");
+  if (!authorization.authorized) return authorization.response;
+
+  const { id } = await params;
+  if (!z.uuid().safeParse(id).success) {
+    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+  }
+
+  const result = await startCandidateAttempt(authorization.user.id, id);
+  if (result.status === "not_found") {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+  if (result.status === "unavailable") {
+    return NextResponse.json(
+      { error: "examination_unavailable" },
+      { status: 409 },
+    );
+  }
+
+  const attempt = await getCandidateAttempt(authorization.user.id, id);
+  return NextResponse.json(
+    { attempt },
+    {
+      status: result.status === "started" ? 201 : 200,
+      headers: { "Cache-Control": "no-store" },
+    },
+  );
 }
