@@ -27,6 +27,32 @@ export const userRole = pgEnum("user_role", [
   "CANDIDATE",
 ]);
 
+export const examinationStatus = pgEnum("examination_status", [
+  "DRAFT",
+  "PUBLISHED",
+]);
+
+export const questionType = pgEnum("question_type", [
+  "SINGLE_CHOICE",
+  "MULTIPLE_SELECT",
+  "WRITTEN_RESPONSE",
+]);
+
+export const questionDifficulty = pgEnum("question_difficulty", [
+  "EASY",
+  "MEDIUM",
+  "HARD",
+]);
+
+export type UserRole = (typeof userRole.enumValues)[number];
+export type QuestionType = (typeof questionType.enumValues)[number];
+export type QuestionDifficulty = (typeof questionDifficulty.enumValues)[number];
+
+export type QuestionOption = {
+  id: string;
+  text: string;
+};
+
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   email: varchar("email", { length: 320 }).notNull().unique(),
