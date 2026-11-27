@@ -1,36 +1,37 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SEMS
 
-## Getting Started
+Secure Examination Management System — a Next.js application for administrators,
+examiners and candidates.
 
-First, run the development server:
+## Local setup
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. Install the project dependencies with `npm install`.
+2. Set `DATABASE_URL` in `.env.local` to a PostgreSQL connection URL. The
+   application validates that it includes a PostgreSQL protocol, host, username
+   and password when the server starts.
+3. Apply the identity schema with `npm run db:migrate`.
+4. Configure `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` in
+   `.env.local`, then run `npm run db:bootstrap-admin`. Use a unique password of
+   at least 12 bytes and no more than bcrypt's 72-byte limit. The bootstrap
+   command is safe to repeat for the same administrator email; it will not
+   replace an existing password or role.
+5. Remove the bootstrap password from `.env.local` after creating the account.
+6. Start the development server with `npm run dev`, then sign in at
+   [http://localhost:3000/sign-in](http://localhost:3000/sign-in).
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Administrators create examiner and candidate accounts from the People & roles
+workspace. There is no public registration. Sessions are stored in PostgreSQL
+as hashes of random tokens and are revoked server-side on sign-out.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Available commands
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `npm run dev` — start the development server.
+- `npm run build` — create a production build.
+- `npm run start` — serve the production build.
+- `npm run lint` — run ESLint on application and configuration code.
+- `npm test` — run focused authentication tests.
+- `npm run db:migrate` — apply the idempotent identity schema migration.
+- `npm run db:bootstrap-admin` — create the configured initial administrator.
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Phase 1 intentionally adds only users and sessions to the database. Examination
+and assessment tables are introduced by later phases.
