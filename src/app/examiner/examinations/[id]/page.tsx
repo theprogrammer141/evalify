@@ -80,6 +80,14 @@ export default async function ExaminationPage({ params }: PageProps) {
               </p>
             </div>
           </div>
+          {examination.status === "PUBLISHED" ? (
+            <Link
+              className="mt-6 inline-flex min-h-11 items-center gap-2 bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:-translate-y-px hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              href={`/examiner/examinations/${examination.id}/monitor`}
+            >
+              Open monitoring
+            </Link>
+          ) : null}
         </header>
 
         <ExaminationSettingsForm examination={examination} />

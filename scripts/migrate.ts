@@ -9,6 +9,7 @@ async function migrate() {
     const migrationFiles = [
       "0001_identity.sql",
       "0002_examinations.sql",
+      "0003_monitoring.sql",
     ] as const;
     const migrations = await Promise.all(
       migrationFiles.map((file) =>

@@ -9,7 +9,7 @@ examiners and candidates.
 2. Set `DATABASE_URL` in `.env.local` to a PostgreSQL connection URL. The
    application validates that it includes a PostgreSQL protocol, host, username
    and password when the server starts.
-3. Apply the identity and examination schemas with `npm run db:migrate`.
+3. Apply the identity, examination and monitoring schemas with `npm run db:migrate`.
 4. Configure `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` in
    `.env.local`, then run `npm run db:bootstrap-admin`. Use a unique password of
    at least 12 bytes and no more than bcrypt's 72-byte limit. The bootstrap
@@ -24,11 +24,14 @@ workspace. There is no public registration. Sessions are stored in PostgreSQL
 as hashes of random tokens and are revoked server-side on sign-out.
 
 Examiners can create and publish examinations, manage reusable questions,
-assign question snapshots, configure randomization and enroll existing
-candidates. Candidates see only published examinations assigned to their
-account; this phase does not include starting or taking an examination.
-Examination totals are calculated from assigned question marks and persisted
-with each change. Schedule availability is evaluated on the server in UTC.
+assign question snapshots, configure randomization, enroll candidates and
+monitor published examinations. Candidates can start one server-timed attempt,
+save answers and review marks, and receive announcements inside the examination
+workspace. The monitoring view reports persisted attempt progress and
+browser-level events; it does not infer a candidate's connection state or make
+misconduct decisions. Examination totals are calculated from assigned question
+marks and persisted with each change. Schedule availability is evaluated on
+the server in UTC.
 
 ## Available commands
 
@@ -41,5 +44,7 @@ with each change. Schedule availability is evaluated on the server in UTC.
 - `npm run db:bootstrap-admin` — create the configured initial administrator.
 
 Phase 2 adds examination setup, question-bank management, enrollment and
-candidate-facing examination listings. Attempt delivery and grading are
-introduced in later phases.
+candidate-facing examination listings. Phase 4 adds the minimum attempt
+delivery needed to persist and monitor progress, incident review, and
+candidate/examiner announcements. Grading and result publication remain out of
+scope.

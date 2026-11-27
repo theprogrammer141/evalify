@@ -9,6 +9,7 @@ import {
 import { db } from "@/lib/db";
 import {
   examinationEnrollments,
+  examinationAttempts,
   examinationQuestions,
   examinations,
   questions,
@@ -656,6 +657,18 @@ export async function removeCandidateEnrollment(
     if (!examination) return { status: "not_found" as const };
     if (examination.endsAt <= new Date())
       return { status: "completed" as const };
+
+    const [existingAttempt] = await transaction
+      .select({ id: examinationAttempts.id })
+      .from(examinationAttempts)
+      .where(
+        and(
+          eq(examinationAttempts.examinationId, examinationId),
+          eq(examinationAttempts.candidateId, candidateId),
+        ),
+      )
+      .limit(1);
+    if (existingAttempt) return { status: "attempt_started" as const };
 
     if (examination.status === "PUBLISHED") {
       const currentEnrollments = await transaction
