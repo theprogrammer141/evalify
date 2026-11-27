@@ -46,17 +46,23 @@ function toBankQuestion<T extends {
     ...question,
     type: question.type === "WRITTEN" ? "WRITTEN_RESPONSE" : question.type,
     answerKey,
+    markingGuidelines:
+      typeof question.markingRules.rubric === "string"
+        ? question.markingRules.rubric
+        : "",
   };
 }
 
 function questionInputValues(input: QuestionInput) {
-  const { answerKey, ...question } = input;
+  const { answerKey, markingGuidelines, ...question } = input;
   const markingRules =
     input.type === "SINGLE_CHOICE"
       ? { correctOptionId: answerKey[0] }
       : input.type === "MULTIPLE_SELECT"
         ? { correctOptionIds: answerKey }
-        : {};
+        : markingGuidelines
+          ? { rubric: markingGuidelines }
+          : {};
   return { ...question, markingRules };
 }
 

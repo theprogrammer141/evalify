@@ -10,6 +10,7 @@ const questionFields = {
   category: z.string().trim().min(1).max(120),
   difficulty: z.enum(["EASY", "MEDIUM", "HARD"]),
   marks: z.number().int().positive().max(10000),
+  markingGuidelines: z.string().trim().max(8000).default(""),
 };
 
 function validateObjectiveAnswers(

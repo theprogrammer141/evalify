@@ -24,7 +24,7 @@ const objectiveQuestion = {
   answerKey: [optionTwo],
 };
 
-test("question validation accepts each supported question type", () => {
+test("question validation accepts each supported question type and written rubrics", () => {
   assert.equal(questionSchema.safeParse(objectiveQuestion).success, true);
   assert.equal(
     questionSchema.safeParse({
@@ -43,8 +43,22 @@ test("question validation accepts each supported question type", () => {
       type: "WRITTEN_RESPONSE",
       options: [],
       answerKey: [],
+      markingGuidelines: "Award credit for a correct method and conclusion.",
     }).success,
     true,
+  );
+  assert.equal(
+    questionSchema.safeParse({
+      prompt: "Show your working.",
+      category: "Arithmetic",
+      difficulty: "MEDIUM",
+      marks: 5,
+      type: "WRITTEN_RESPONSE",
+      options: [],
+      answerKey: [],
+      markingGuidelines: "x".repeat(8001),
+    }).success,
+    false,
   );
 });
 

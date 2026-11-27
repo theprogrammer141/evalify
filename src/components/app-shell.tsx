@@ -17,6 +17,7 @@ const workspaceLinks = {
   ],
   EXAMINER: [
     { href: "/examiner", label: "Examinations" },
+    { href: "/examiner/evaluations", label: "Evaluation queue" },
     { href: "/examiner/questions", label: "Question bank" },
   ],
   CANDIDATE: [{ href: "/candidate", label: "Your examinations" }],

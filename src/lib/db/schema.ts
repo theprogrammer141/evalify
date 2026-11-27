@@ -52,6 +52,25 @@ export const attemptStatus = pgEnum("attempt_status", [
   "EXPIRED",
 ]);
 
+export const evaluationStatus = pgEnum("evaluation_status", [
+  "AUTO_GRADED",
+  "AWAITING_MANUAL",
+  "PARTIALLY_EVALUATED",
+  "COMPLETED",
+  "FINALIZED",
+]);
+
+export const evaluationMarkSource = pgEnum("evaluation_mark_source", [
+  "AUTO",
+  "MANUAL",
+]);
+
+export const evaluationHistoryAction = pgEnum("evaluation_history_action", [
+  "EVALUATION_CREATED",
+  "MARKS_UPDATED",
+  "FINALIZED",
+]);
+
 export const monitoringEventType = pgEnum("monitoring_event_type", [
   "CONNECTION_INTERRUPTION",
   "CONNECTION_RESTORED",
@@ -63,6 +82,7 @@ export type UserRole = (typeof userRole.enumValues)[number];
 export type QuestionType = (typeof questionType.enumValues)[number];
 export type QuestionDifficulty = (typeof questionDifficulty.enumValues)[number];
 export type AttemptStatus = (typeof attemptStatus.enumValues)[number];
+export type EvaluationStatus = (typeof evaluationStatus.enumValues)[number];
 export type MonitoringEventType =
   (typeof monitoringEventType.enumValues)[number];
 
@@ -428,6 +448,138 @@ export const attemptAnswers = pgTable(
         )
       )`,
     ),
+  ],
+);
+
+export const evaluations = pgTable(
+  "evaluations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    attemptId: uuid("attempt_id")
+      .notNull()
+      .references(() => attempts.id, { onDelete: "restrict" })
+      .unique(),
+    examinerId: uuid("examiner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    status: evaluationStatus("status").notNull(),
+    totalMarks: integer("total_marks").notNull().default(0),
+    autoMarks: integer("auto_marks").notNull().default(0),
+    manualMarks: integer("manual_marks").notNull().default(0),
+    revision: integer("revision").notNull().default(0),
+    finalizedBy: uuid("finalized_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("evaluations_id_attempt_unique").on(table.id, table.attemptId),
+    index("evaluations_examiner_status_idx").on(table.examinerId, table.status),
+    check(
+      "evaluations_marks_nonnegative",
+      sql`${table.totalMarks} >= 0 and ${table.autoMarks} >= 0 and ${table.manualMarks} >= 0`,
+    ),
+    check(
+      "evaluations_marks_sum",
+      sql`${table.totalMarks} = ${table.autoMarks} + ${table.manualMarks}`,
+    ),
+    check(
+      "evaluations_revision_nonnegative",
+      sql`${table.revision} >= 0`,
+    ),
+    check(
+      "evaluations_finalization_consistent",
+      sql`(${table.status} = 'FINALIZED' and ${table.finalizedBy} is not null and ${table.finalizedAt} is not null) or (${table.status} <> 'FINALIZED' and ${table.finalizedBy} is null and ${table.finalizedAt} is null)`,
+    ),
+  ],
+);
+
+export const evaluationQuestionMarks = pgTable(
+  "evaluation_question_marks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    evaluationId: uuid("evaluation_id").notNull(),
+    attemptId: uuid("attempt_id").notNull(),
+    questionId: uuid("question_id").notNull(),
+    source: evaluationMarkSource("source").notNull(),
+    awardedMarks: integer("awarded_marks"),
+    feedback: text("feedback").notNull().default(""),
+    gradedBy: uuid("graded_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    gradedAt: timestamp("graded_at", { withTimezone: true }),
+    revision: integer("revision").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("evaluation_question_marks_unique").on(
+      table.evaluationId,
+      table.questionId,
+    ),
+    index("evaluation_question_marks_attempt_idx").on(table.attemptId),
+    foreignKey({
+      name: "evaluation_question_marks_evaluation_attempt_fk",
+      columns: [table.evaluationId, table.attemptId],
+      foreignColumns: [evaluations.id, evaluations.attemptId],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "evaluation_question_marks_attempt_question_fk",
+      columns: [table.attemptId, table.questionId],
+      foreignColumns: [attemptAnswers.attemptId, attemptAnswers.snapshotQuestionId],
+    }).onDelete("restrict"),
+    check(
+      "evaluation_question_marks_awarded_nonnegative",
+      sql`${table.awardedMarks} is null or ${table.awardedMarks} >= 0`,
+    ),
+    check(
+      "evaluation_question_marks_revision_nonnegative",
+      sql`${table.revision} >= 0`,
+    ),
+    check(
+      "evaluation_question_marks_source_valid",
+      sql`(${table.source} = 'AUTO' and ${table.awardedMarks} is not null and ${table.gradedBy} is null and ${table.gradedAt} is not null) or (${table.source} = 'MANUAL' and ((${table.awardedMarks} is null and ${table.gradedBy} is null and ${table.gradedAt} is null) or (${table.awardedMarks} is not null and ${table.gradedBy} is not null and ${table.gradedAt} is not null)))`,
+    ),
+  ],
+);
+
+export const evaluationHistory = pgTable(
+  "evaluation_history",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    evaluationId: uuid("evaluation_id").notNull(),
+    attemptId: uuid("attempt_id").notNull(),
+    actorId: uuid("actor_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    questionId: uuid("question_id"),
+    action: evaluationHistoryAction("action").notNull(),
+    revision: integer("revision").notNull(),
+    beforeState: jsonb("before_state").$type<Record<string, unknown> | null>(),
+    afterState: jsonb("after_state")
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("evaluation_history_revision_unique").on(
+      table.evaluationId,
+      table.revision,
+    ),
+    foreignKey({
+      name: "evaluation_history_evaluation_attempt_fk",
+      columns: [table.evaluationId, table.attemptId],
+      foreignColumns: [evaluations.id, evaluations.attemptId],
+    }).onDelete("cascade"),
   ],
 );
 
