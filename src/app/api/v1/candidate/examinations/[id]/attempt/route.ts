@@ -6,20 +6,20 @@ import { startCandidateAttempt } from "@/lib/attempts/service";
 
 export async function POST(
   _request: Request,
-  { params }: { params: Promise<{ examinationId: string }> },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const authorization = await authorizeApi("CANDIDATE");
   if (!authorization.authorized) return authorization.response;
 
-  const { examinationId } = await params;
-  if (!z.uuid().safeParse(examinationId).success) {
+  const { id } = await params;
+  if (!z.uuid().safeParse(id).success) {
     return invalidRequestResponse();
   }
 
   try {
     const attempt = await startCandidateAttempt(
       authorization.user.id,
-      examinationId,
+      id,
     );
     return NextResponse.json(
       { attempt },
