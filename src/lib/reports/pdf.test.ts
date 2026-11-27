@@ -18,10 +18,26 @@ function makePerformanceReport(candidateCount: number): PerformanceReport {
     closesAt: "2026-01-01T12:00:00.000Z",
     durationMinutes: 180,
     generatedAt: "2026-01-02T09:00:00.000Z",
-    candidateCount,
+    enrolledCount: candidateCount,
+    submittedCount: candidateCount,
+    participationRate: 100,
     finalizedCount: candidateCount,
+    publishedCount: candidateCount,
     averagePercentage: 81.5,
+    highestPercentage: 82,
+    lowestPercentage: 82,
     highestMarks: 48,
+    lowestMarks: 41,
+    passRate: null,
+    passThreshold: null,
+    reportStage: "PUBLISHED_RESULTS",
+    scoreDistribution: [
+      { label: "0–<20%", count: 0 },
+      { label: "20–<40%", count: 0 },
+      { label: "40–<60%", count: 0 },
+      { label: "60–<80%", count: 0 },
+      { label: "80–100%", count: candidateCount },
+    ],
     candidates: Array.from({ length: candidateCount }, (_, index) => ({
       candidateEmail: `candidate-${String(index).padStart(3, "0")}@example.test`,
       attemptStatus: index % 2 === 0 ? "SUBMITTED" : "EXPIRED",
@@ -32,6 +48,7 @@ function makePerformanceReport(candidateCount: number): PerformanceReport {
       manualMarks: 15,
       maximumMarks: 50,
       published: true,
+      percentage: 82,
     })),
   };
 }
@@ -63,6 +80,20 @@ test("performance PDF paginates large candidate tables", async () => {
   const bytes = await buildPerformanceReportPdf(makePerformanceReport(80));
   const document = await PDFDocument.load(bytes);
   assert.ok(document.getPageCount() > 1);
+});
+
+test("archived performance PDF includes a unique verification reference", async () => {
+  const verificationToken = "b".repeat(64);
+  const bytes = await buildPerformanceReportPdf(makePerformanceReport(2), {
+    verificationToken,
+    verificationUrl: `https://evalify.example.test/verify/${verificationToken}`,
+  });
+  const document = await PDFDocument.load(bytes);
+  const verificationPage = document.getPage(document.getPageCount() - 1);
+  assert.ok(
+    verificationPage.node.Resources()?.toString().includes("/XObject"),
+    "the verification page should contain the QR image",
+  );
 });
 
 test("official candidate PDF embeds its verification reference", async () => {

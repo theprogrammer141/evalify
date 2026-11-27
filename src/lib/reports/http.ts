@@ -18,6 +18,7 @@ export function reportErrorResponse(error: unknown): NextResponse {
 export function reportPdfResponse(
   pdf: Uint8Array,
   filename: string,
+  additionalHeaders: Record<string, string> = {},
 ): Response {
   return new Response(Buffer.from(pdf), {
     headers: {
@@ -25,6 +26,7 @@ export function reportPdfResponse(
       "Content-Disposition": `attachment; filename="${filename}"`,
       "Content-Type": "application/pdf",
       "X-Content-Type-Options": "nosniff",
+      ...additionalHeaders,
     },
   });
 }
