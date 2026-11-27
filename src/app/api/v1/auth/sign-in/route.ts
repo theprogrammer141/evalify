@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import {
   createSession,
   revokeSession,
+  LEGACY_SESSION_COOKIE_NAME,
   SESSION_COOKIE_NAME,
   SESSION_DURATION_SECONDS,
 } from "@/lib/auth/session";
@@ -30,6 +31,8 @@ export async function POST(request: Request) {
 
   const cookieStore = await cookies();
   await revokeSession(cookieStore.get(SESSION_COOKIE_NAME)?.value);
+  await revokeSession(cookieStore.get(LEGACY_SESSION_COOKIE_NAME)?.value);
+  cookieStore.delete(LEGACY_SESSION_COOKIE_NAME);
   const token = await createSession(account.id);
 
   cookieStore.set(SESSION_COOKIE_NAME, token, {

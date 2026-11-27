@@ -1,6 +1,6 @@
-# SEMS
+# Evalify
 
-Secure Examination Management System — a Next.js application for administrators,
+An online examination management platform — a Next.js application for administrators,
 examiners and candidates.
 
 ## Local setup
