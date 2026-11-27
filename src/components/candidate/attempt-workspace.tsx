@@ -15,7 +15,9 @@ import {
   Check,
   Clock3,
   Flag,
+  NotebookPen,
   Save,
+  Settings2,
   Wifi,
   WifiOff,
 } from "lucide-react";
@@ -40,7 +42,17 @@ function getConnectivitySnapshot() {
   return navigator.onLine;
 }
 
-type SyncState = "saved" | "pending" | "failed";
+type SyncState = "saved" | "pending" | "saving" | "failed";
+type WorkspacePreferences = {
+  density: "comfortable" | "compact";
+  textSize: "standard" | "large";
+};
+
+const defaultPreferences: WorkspacePreferences = {
+  density: "comfortable",
+  textSize: "standard",
+};
+
 type QuestionProgress = Pick<
   CandidateQuestion,
   "answer" | "markedForReview" | "revision"
@@ -87,8 +99,10 @@ function questionTypeLabel(question: CandidateQuestion): string {
 }
 
 export function AttemptWorkspace({
+  candidateId,
   initialAttempt,
 }: {
+  candidateId: string;
   initialAttempt: CandidateAttempt;
 }) {
   const [attempt, setAttempt] = useState(initialAttempt);
@@ -115,12 +129,19 @@ export function AttemptWorkspace({
         Date.parse(initialAttempt.serverNow),
     ),
   );
+  const [preferences, setPreferences] =
+    useState<WorkspacePreferences>(defaultPreferences);
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const submitDialogRef = useRef<HTMLElement | null>(null);
   const [scratchpad, setScratchpad] = useState("");
+  const [scratchpadOpen, setScratchpadOpen] = useState(true);
+  const [scratchpadLoaded, setScratchpadLoaded] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [storageError, setStorageError] = useState<string | null>(null);
 
   const questions = attempt.questions;
   const currentQuestion = questions[currentIndex];
@@ -136,6 +157,9 @@ export function AttemptWorkspace({
   const hasPending = Object.values(progress).some(
     (state) => state.sync === "pending",
   );
+  const hasSaving = Object.values(progress).some(
+    (state) => state.sync === "saving",
+  );
   const hasFailed = Object.values(progress).some(
     (state) => state.sync === "failed",
   );
@@ -146,6 +170,89 @@ export function AttemptWorkspace({
     progressRef.current = next;
     setProgress(next);
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const saved = window.localStorage.getItem(
+          `evalify:workspace-preferences:${candidateId}`,
+        );
+        if (saved) {
+          const parsed: unknown = JSON.parse(saved);
+          if (
+            parsed &&
+            typeof parsed === "object" &&
+            "density" in parsed &&
+            "textSize" in parsed &&
+            (parsed.density === "comfortable" || parsed.density === "compact") &&
+            (parsed.textSize === "standard" || parsed.textSize === "large")
+          ) {
+            setPreferences({
+              density: parsed.density,
+              textSize: parsed.textSize,
+            });
+          }
+        }
+      } catch {
+        setStorageError("Workspace preferences are unavailable in this browser.");
+      } finally {
+        setPreferencesLoaded(true);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [candidateId]);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    try {
+      window.localStorage.setItem(
+        `evalify:workspace-preferences:${candidateId}`,
+        JSON.stringify(preferences),
+      );
+    } catch {
+      window.setTimeout(
+        () =>
+          setStorageError(
+            "Workspace preferences could not be saved in this browser.",
+          ),
+        0,
+      );
+    }
+  }, [candidateId, preferences, preferencesLoaded]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const saved = window.localStorage.getItem(
+          `evalify:scratchpad:${initialAttempt.id}`,
+        );
+        if (saved !== null) setScratchpad(saved);
+      } catch {
+        setStorageError("Scratchpad notes are unavailable in this browser.");
+      } finally {
+        setScratchpadLoaded(true);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [initialAttempt.id]);
+
+  useEffect(() => {
+    if (!scratchpadLoaded) return;
+    try {
+      window.localStorage.setItem(
+        `evalify:scratchpad:${initialAttempt.id}`,
+        scratchpad,
+      );
+    } catch {
+      window.setTimeout(
+        () =>
+          setStorageError(
+            "Scratchpad notes could not be saved in this browser.",
+          ),
+        0,
+      );
+    }
+  }, [initialAttempt.id, scratchpad, scratchpadLoaded]);
 
   const applyAttemptState = useCallback(
     (nextAttempt: CandidateAttempt) => {
@@ -166,6 +273,13 @@ export function AttemptWorkspace({
       if (!currentDirty || currentDirty.revision !== value.revision) return true;
 
       try {
+        const savingProgress = progressRef.current[questionId];
+        if (savingProgress?.revision === value.revision) {
+          replaceProgress({
+            ...progressRef.current,
+            [questionId]: { ...savingProgress, sync: "saving" },
+          });
+        }
         const response = await fetch(
           `/api/v1/candidate/attempts/${attempt.id}/answers/${questionId}`,
           {
@@ -377,7 +491,8 @@ export function AttemptWorkspace({
     function onOnline() {
       retryCountRef.current = 0;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-      void reconcileRef.current();
+      setReconnecting(true);
+      void reconcileRef.current().finally(() => setReconnecting(false));
     }
     window.addEventListener("online", onOnline);
     const timers = timersRef.current;
@@ -463,11 +578,15 @@ export function AttemptWorkspace({
 
   const statusText = !online
     ? "Offline — changes may not reach the server"
-    : hasFailed
-      ? "Some changes failed to save"
-      : hasPending
-        ? "Saving changes…"
-        : "All changes saved";
+    : reconnecting
+      ? "Reconnecting and checking saved answers…"
+      : hasFailed
+        ? "Some changes failed to save"
+        : hasSaving
+          ? "Saving changes…"
+          : hasPending
+            ? "Changes waiting to save…"
+            : "All changes saved";
 
   const progressSummary = useMemo(
     () => `${answeredCount} of ${questions.length} answered`,
@@ -645,13 +764,21 @@ export function AttemptWorkspace({
             </div>
 
             <h2
-              className="mt-7 whitespace-pre-wrap font-heading text-xl font-semibold leading-8 tracking-tight sm:text-2xl"
+              className={`mt-7 whitespace-pre-wrap font-heading font-semibold leading-8 tracking-tight ${
+                preferences.textSize === "large"
+                  ? "text-2xl sm:text-3xl"
+                  : "text-xl sm:text-2xl"
+              }`}
               id={`question-${currentQuestion.id}`}
             >
               {currentQuestion.prompt}
             </h2>
 
-            <div className="mt-7 space-y-3">
+            <div
+              className={`mt-7 ${
+                preferences.density === "compact" ? "space-y-2" : "space-y-3"
+              }`}
+            >
               {currentQuestion.type === "SINGLE_CHOICE" &&
                 currentQuestion.options.map((option, index) => {
                   const selected =
@@ -659,7 +786,13 @@ export function AttemptWorkspace({
                     currentProgress.answer.optionId === option.id;
                   return (
                     <label
-                      className={`flex min-h-14 cursor-pointer items-start gap-4 rounded-xl border px-4 py-4 text-base leading-6 transition-colors focus-within:ring-2 focus-within:ring-ring ${
+                      className={`flex min-h-14 cursor-pointer items-start gap-4 rounded-xl border px-4 ${
+                        preferences.density === "compact" ? "py-3" : "py-4"
+                      } ${
+                        preferences.textSize === "large"
+                          ? "text-lg"
+                          : "text-base"
+                      } leading-6 transition-colors focus-within:ring-2 focus-within:ring-ring ${
                         selected
                           ? "border-primary bg-primary/5"
                           : "border-border hover:bg-surface-muted/60"
@@ -694,7 +827,13 @@ export function AttemptWorkspace({
                     currentProgress.answer.optionIds.includes(option.id);
                   return (
                     <label
-                      className={`flex min-h-14 cursor-pointer items-start gap-4 rounded-xl border px-4 py-4 text-base leading-6 transition-colors focus-within:ring-2 focus-within:ring-ring ${
+                      className={`flex min-h-14 cursor-pointer items-start gap-4 rounded-xl border px-4 ${
+                        preferences.density === "compact" ? "py-3" : "py-4"
+                      } ${
+                        preferences.textSize === "large"
+                          ? "text-lg"
+                          : "text-base"
+                      } leading-6 transition-colors focus-within:ring-2 focus-within:ring-ring ${
                         selected
                           ? "border-primary bg-primary/5"
                           : "border-border hover:bg-surface-muted/60"
@@ -743,7 +882,11 @@ export function AttemptWorkspace({
                     Your response
                   </label>
                   <textarea
-                    className="min-h-56 w-full resize-y rounded-xl border border-input bg-background px-4 py-3 text-base leading-7 outline-none transition focus-visible:ring-2 focus-visible:ring-ring disabled:bg-surface-muted"
+                    className={`w-full resize-y rounded-xl border border-input bg-background px-4 py-3 leading-7 outline-none transition focus-visible:ring-2 focus-visible:ring-ring disabled:bg-surface-muted ${
+                      preferences.density === "compact"
+                        ? "min-h-44"
+                        : "min-h-56"
+                    } ${preferences.textSize === "large" ? "text-lg" : "text-base"}`}
                     disabled={!isActive}
                     id={`answer-${currentQuestion.id}`}
                     onChange={(event) =>
@@ -885,25 +1028,102 @@ export function AttemptWorkspace({
           </section>
 
           <section className="rounded-2xl border border-border bg-background p-5">
-            <div>
-              <h2 className="font-heading text-lg font-semibold">Scratchpad</h2>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                Rough work only. This is not saved or submitted and clears when
-                you refresh or leave this attempt.
-              </p>
+            <div className="flex items-center gap-2">
+              <Settings2 aria-hidden="true" className="size-4 text-muted-foreground" />
+              <h2 className="font-heading text-lg font-semibold">
+                Workspace preferences
+              </h2>
             </div>
-            <label className="sr-only" htmlFor="attempt-scratchpad">
-              Scratchpad notes
-            </label>
-            <textarea
-              className="mt-4 min-h-40 w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              disabled={!isActive}
-              id="attempt-scratchpad"
-              onChange={(event) => setScratchpad(event.target.value)}
-              placeholder="Use this space for rough work"
-              value={scratchpad}
-            />
+            <div className="mt-4 space-y-4">
+              <label className="block text-sm font-medium" htmlFor="question-text-size">
+                Question text
+                <select
+                  className="mt-2 min-h-11 w-full rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  id="question-text-size"
+                  onChange={(event) =>
+                    setPreferences((current) => ({
+                      ...current,
+                      textSize:
+                        event.target.value === "large" ? "large" : "standard",
+                    }))
+                  }
+                  value={preferences.textSize}
+                >
+                  <option value="standard">Standard</option>
+                  <option value="large">Larger</option>
+                </select>
+              </label>
+              <label className="block text-sm font-medium" htmlFor="question-density">
+                Answer spacing
+                <select
+                  className="mt-2 min-h-11 w-full rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  id="question-density"
+                  onChange={(event) =>
+                    setPreferences((current) => ({
+                      ...current,
+                      density:
+                        event.target.value === "compact"
+                          ? "compact"
+                          : "comfortable",
+                    }))
+                  }
+                  value={preferences.density}
+                >
+                  <option value="comfortable">Comfortable</option>
+                  <option value="compact">Compact</option>
+                </select>
+              </label>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+              Preferences are kept in this browser and do not change examination content.
+            </p>
           </section>
+
+          <section className="rounded-2xl border border-border bg-background p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <NotebookPen
+                  aria-hidden="true"
+                  className="size-4 text-muted-foreground"
+                />
+                <h2 className="font-heading text-lg font-semibold">
+                  Scratchpad
+                </h2>
+              </div>
+              <button
+                aria-expanded={scratchpadOpen}
+                className="min-h-11 px-2 text-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                onClick={() => setScratchpadOpen((open) => !open)}
+                type="button"
+              >
+                {scratchpadOpen ? "Hide" : "Show"}
+              </button>
+            </div>
+            {scratchpadOpen && (
+              <>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Rough work only. Notes stay in this browser and are never sent
+                  with your answers.
+                </p>
+                <label className="sr-only" htmlFor="attempt-scratchpad">
+                  Scratchpad notes
+                </label>
+                <textarea
+                  className="mt-4 min-h-40 w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:bg-surface-muted"
+                  disabled={!isActive}
+                  id="attempt-scratchpad"
+                  onChange={(event) => setScratchpad(event.target.value)}
+                  placeholder="Use this space for rough work"
+                  value={scratchpad}
+                />
+              </>
+            )}
+          </section>
+          {storageError && (
+            <p className="text-sm leading-6 text-warning" role="status">
+              {storageError}
+            </p>
+          )}
 
           {isActive && (
             <section className="rounded-2xl border border-border bg-background p-5">
@@ -960,8 +1180,9 @@ export function AttemptWorkspace({
               Submit this examination?
             </h2>
             <p className="mt-3 text-base leading-7 text-muted-foreground">
-              You have answered {answeredCount} of {questions.length} questions
-              and marked {reviewCount} for review. After submission, your answers
+              You have answered {answeredCount} of {questions.length} questions;
+              {` ${questions.length - answeredCount} unanswered and `}
+              {reviewCount} marked for review. After submission, your answers
               cannot be changed.
             </p>
             {(hasPending || hasFailed || !online) && (

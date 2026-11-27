@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CandidateAttemptWorkspace } from "@/components/examinations/candidate-attempt-workspace";
+import { AttemptEntry } from "@/components/candidate/attempt-entry";
 
 type CandidateExamination = {
   id: string;
@@ -165,8 +165,8 @@ export function CandidateExaminationDetail({
           </p>
         </section>
 
-        <CandidateAttemptWorkspace
-          availability={examination.availability}
+        <AttemptEntry
+          available={examination.availability === "ongoing"}
           examinationId={examination.id}
         />
       </article>

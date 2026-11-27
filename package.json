@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint src scripts instrumentation.ts next.config.ts neon.ts",
-    "test": "tsx --test src/lib/auth/validation.test.ts src/lib/attempts/validation.test.ts src/lib/examinations/validation.test.ts src/lib/monitoring/validation.test.ts src/lib/monitoring/progress.test.ts",
+    "test": "tsx --test src/lib/auth/validation.test.ts src/lib/attempts/validation.test.ts src/lib/attempts/state.test.ts src/lib/examinations/validation.test.ts src/lib/monitoring/validation.test.ts src/lib/monitoring/progress.test.ts",
+    "test:e2e": "playwright test",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:bootstrap-admin": "tsx scripts/bootstrap-admin.ts"
   },

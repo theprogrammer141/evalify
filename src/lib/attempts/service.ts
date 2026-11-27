@@ -32,6 +32,10 @@ import type {
   CandidateQuestion,
   QuestionOption,
 } from "@/lib/attempts/types";
+import {
+  getAnswerRevisionDecision,
+  getFinalizedAttemptStatus,
+} from "@/lib/attempts/state";
 
 export class AttemptServiceError extends Error {
   constructor(
@@ -91,20 +95,10 @@ function parseSnapshot(snapshot: unknown): AttemptSnapshot {
   return parsed.data;
 }
 
-function stateMatches(
-  stored: AnswerRow,
-  answer: AttemptAnswerValue | null,
-  markedForReview: boolean,
-): boolean {
-  return (
-    JSON.stringify(stored.answer) === JSON.stringify(answer) &&
-    stored.markedForReview === markedForReview
-  );
-}
-
 function toCandidateAttempt(
   attempt: {
     id: string;
+    examinationId: string;
     status: "IN_PROGRESS" | "SUBMITTED" | "EXPIRED";
     startedAt: Date;
     expiresAt: Date;
@@ -135,6 +129,7 @@ function toCandidateAttempt(
 
   return {
     id: attempt.id,
+    examinationId: attempt.examinationId,
     status: attempt.status,
     examTitle: snapshot.examTitle,
     instructions: snapshot.instructions,
@@ -156,18 +151,17 @@ async function finalizeAttemptInTransaction(
 ): Promise<typeof attempts.$inferSelect> {
   if (attempt.status !== "IN_PROGRESS") return attempt;
 
-  const shouldExpire =
-    request.kind === "deadline"
-      ? attempt.expiresAt <= now ||
-        (request.receivedAt !== undefined &&
-          request.receivedAt >= attempt.expiresAt)
-      : request.receivedAt >= attempt.expiresAt;
-  if (request.kind === "deadline" && !shouldExpire) return attempt;
+  const finalizedStatus = getFinalizedAttemptStatus(
+    attempt.expiresAt,
+    now,
+    request,
+  );
+  if (!finalizedStatus) return attempt;
 
   const [finalized] = await transaction
     .update(attempts)
     .set({
-      status: shouldExpire ? "EXPIRED" : "SUBMITTED",
+      status: finalizedStatus,
       finalizedAt: now,
     })
     .where(
@@ -251,6 +245,7 @@ export async function listCandidateExaminations(candidateId: string) {
       opensAt: examinations.opensAt,
       closesAt: examinations.closesAt,
       durationMinutes: examinations.durationMinutes,
+      totalMarks: examinations.totalMarks,
       status: examinations.status,
       attemptId: attempts.id,
       attemptStatus: attempts.status,
@@ -497,6 +492,24 @@ export async function getCandidateAttempt(
   });
 }
 
+export async function getCandidateAttemptForExamination(
+  candidateId: string,
+  examinationId: string,
+): Promise<CandidateAttempt | null> {
+  const [attempt] = await db
+    .select({ id: attempts.id })
+    .from(attempts)
+    .where(
+      and(
+        eq(attempts.candidateId, candidateId),
+        eq(attempts.examinationId, examinationId),
+      ),
+    )
+    .limit(1);
+  if (!attempt) return null;
+  return getCandidateAttempt(candidateId, attempt.id);
+}
+
 export async function saveCandidateAnswer(input: {
   candidateId: string;
   attemptId: string;
@@ -572,19 +585,21 @@ export async function saveCandidateAnswer(input: {
       throw new AttemptServiceError("invalid_attempt_state", 500);
     }
 
-    if (input.revision < storedAnswer.revision) {
-      throw new AttemptServiceError("revision_conflict", 409);
-    }
-    if (input.revision === storedAnswer.revision) {
-      if (
-        !stateMatches(
-          storedAnswer,
-          input.answer,
-          input.markedForReview,
-        )
-      ) {
-        return { error: "revision_conflict" as const };
+    const revisionDecision = getAnswerRevisionDecision({
+      storedRevision: storedAnswer.revision,
+      incomingRevision: input.revision,
+      storedAnswer: storedAnswer.answer,
+      incomingAnswer: input.answer,
+      storedMarkedForReview: storedAnswer.markedForReview,
+      incomingMarkedForReview: input.markedForReview,
+    });
+    if (revisionDecision === "stale") {
+      if (input.revision < storedAnswer.revision) {
+        throw new AttemptServiceError("revision_conflict", 409);
       }
+      return { error: "revision_conflict" as const };
+    }
+    if (revisionDecision === "idempotent") {
       return {
         error: null,
         questionId: storedAnswer.snapshotQuestionId,

@@ -1,45 +1,56 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { authorizeApi } from "@/lib/auth/authorization";
-import { saveCandidateAnswer } from "@/lib/monitoring/service";
-import { attemptAnswerInputSchema } from "@/lib/monitoring/validation";
+import {
+  attemptErrorResponse,
+  invalidRequestResponse,
+} from "@/lib/attempts/http";
+import {
+  getCandidateAttemptForExamination,
+  saveCandidateAnswer,
+} from "@/lib/attempts/service";
+import { saveAttemptAnswerSchema } from "@/lib/attempts/validation";
 
 type RouteContext = {
   params: Promise<{ id: string; questionId: string }>;
 };
 
 export async function PUT(request: Request, { params }: RouteContext) {
+  const receivedAt = new Date();
   const authorization = await authorizeApi("CANDIDATE");
   if (!authorization.authorized) return authorization.response;
 
-  const parsed = attemptAnswerInputSchema.safeParse(
+  const { id, questionId } = await params;
+  if (!z.uuid().safeParse(id).success || !z.uuid().safeParse(questionId).success) {
+    return invalidRequestResponse();
+  }
+
+  const parsed = saveAttemptAnswerSchema.safeParse(
     await request.json().catch(() => null),
   );
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "invalid_answer", issues: parsed.error.issues },
-      { status: 400 },
+  if (!parsed.success) return invalidRequestResponse();
+
+  try {
+    const attempt = await getCandidateAttemptForExamination(
+      authorization.user.id,
+      id,
     );
-  }
+    if (!attempt) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
 
-  const { id, questionId } = await params;
-  const result = await saveCandidateAnswer(
-    authorization.user.id,
-    id,
-    questionId,
-    parsed.data,
-  );
-  if (result.status === "not_found") {
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
+    const answer = await saveCandidateAnswer({
+      candidateId: authorization.user.id,
+      attemptId: attempt.id,
+      questionId,
+      receivedAt,
+      ...parsed.data,
+    });
+    return NextResponse.json(
+      { answer },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    return attemptErrorResponse(error);
   }
-  if (result.status === "invalid_answer") {
-    return NextResponse.json({ error: "invalid_answer" }, { status: 400 });
-  }
-  if (result.status === "expired" || result.status === "finalized") {
-    return NextResponse.json({ error: result.status }, { status: 409 });
-  }
-
-  return NextResponse.json(
-    { savedAt: result.savedAt },
-    { headers: { "Cache-Control": "no-store" } },
-  );
 }

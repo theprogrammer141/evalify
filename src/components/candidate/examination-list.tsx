@@ -12,6 +12,7 @@ type ExaminationItem = {
   opensAt: string;
   closesAt: string;
   durationMinutes: number;
+  totalMarks: number;
   status: "DRAFT" | "PUBLISHED" | "COMPLETED";
   attemptId: string | null;
   attemptStatus: "IN_PROGRESS" | "SUBMITTED" | "EXPIRED" | null;
@@ -31,6 +32,42 @@ export function ExaminationList({
     timeStyle: "short",
     timeZone: "UTC",
   });
+  const groups = [
+    {
+      title: "In progress",
+      items: examinations.filter(
+        (examination) => examination.attemptStatus === "IN_PROGRESS",
+      ),
+    },
+    {
+      title: "Available now",
+      items: examinations.filter(
+        (examination) =>
+          examination.availability === "AVAILABLE" &&
+          examination.attemptStatus === null,
+      ),
+    },
+    {
+      title: "Upcoming",
+      items: examinations.filter(
+        (examination) =>
+          examination.availability === "UPCOMING" &&
+          examination.attemptStatus === null,
+      ),
+    },
+    {
+      title: "Completed or closed",
+      items: examinations.filter(
+        (examination) =>
+          examination.attemptStatus === "SUBMITTED" ||
+          examination.attemptStatus === "EXPIRED" ||
+          (examination.availability === "CLOSED" &&
+            examination.attemptStatus !== "IN_PROGRESS") ||
+          (examination.availability === "UNAVAILABLE" &&
+            examination.attemptStatus !== "IN_PROGRESS"),
+      ),
+    },
+  ].filter((group) => group.items.length > 0);
 
   async function openExamination(examination: ExaminationItem) {
     if (examination.attemptId) {
@@ -92,8 +129,17 @@ export function ExaminationList({
           {error}
         </p>
       )}
-      <ul className="space-y-4">
-        {examinations.map((examination) => {
+      <div className="space-y-10">
+        {groups.map((group) => (
+          <section aria-labelledby={`examinations-${group.title}`} key={group.title}>
+            <h2
+              className="mb-4 font-heading text-xl font-semibold"
+              id={`examinations-${group.title}`}
+            >
+              {group.title}
+            </h2>
+            <ul className="space-y-4">
+              {group.items.map((examination) => {
           const canOpen =
             examination.attemptId !== null ||
             examination.availability === "AVAILABLE";
@@ -143,13 +189,18 @@ export function ExaminationList({
                     <span className="inline-flex items-center gap-2">
                       <CalendarDays aria-hidden="true" className="size-4" />
                       <time dateTime={examination.opensAt}>
-                        {dateFormatter.format(new Date(examination.opensAt))} UTC
+                        {dateFormatter.format(new Date(examination.opensAt))}
+                      </time>
+                      <span aria-hidden="true">–</span>
+                      <time dateTime={examination.closesAt}>
+                        {dateFormatter.format(new Date(examination.closesAt))} UTC
                       </time>
                     </span>
                     <span className="inline-flex items-center gap-2">
                       <Clock3 aria-hidden="true" className="size-4" />
                       {examination.durationMinutes} minutes
                     </span>
+                    <span>{examination.totalMarks} marks</span>
                   </div>
                 </div>
                 <Button
@@ -167,9 +218,12 @@ export function ExaminationList({
                 </Button>
               </div>
             </li>
-          );
-        })}
-      </ul>
+              );
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
       <p className="mt-6 text-sm leading-6 text-muted-foreground">
         Your attempt time is set by the server and continues during connection
         interruptions.
