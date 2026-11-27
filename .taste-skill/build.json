@@ -1,0 +1,11 @@
+{
+ "page": null,
+ "url": "http://localhost:3000/",
+ "root": null,
+ "kind": "software",
+ "category": "online examination management platform",
+ "primary": "Sign in",
+ "rounds": 3,
+ "start": "2026-11-27T13:35:30.320Z",
+ "by": "gate.mjs --start"
+}
