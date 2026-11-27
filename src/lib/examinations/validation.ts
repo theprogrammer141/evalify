@@ -209,6 +209,14 @@ export function getAvailabilityState(
 ): "draft" | "upcoming" | "ongoing" | "completed" {
   if (status === "DRAFT") return "draft";
   if (endsAt <= now) return "completed";
-  if (startsAt > now) return "upcoming";
+  if (!isWithinAvailabilityWindow(startsAt, endsAt, now)) return "upcoming";
   return "ongoing";
+}
+
+export function isWithinAvailabilityWindow(
+  startsAt: Date,
+  endsAt: Date,
+  now: Date,
+): boolean {
+  return startsAt <= now && now < endsAt;
 }
