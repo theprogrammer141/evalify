@@ -1,8 +1,8 @@
-# Secure Examination Management System (SEMS) — Requirements
+# Evalify — Requirements
 
 ## 1. Purpose of this document
 
-This document defines the functional and non-functional requirements for the Secure Examination Management System (SEMS). It translates the approved product decisions in `project-doc.md` and the Web-e-Thon problem statement into requirements that can be implemented and verified.
+This document defines the functional and non-functional requirements for Evalify. It translates the approved product decisions in `project-doc.md` and the Web-e-Thon problem statement into requirements that can be implemented and verified.
 
 It defines **what the system must do**, not the detailed implementation plan for each feature. Feature specifications will be written and approved one at a time using the format agreed by the team. A feature specification may add implementation detail, but it must not contradict these requirements or the product decisions in `project-doc.md`.
 
@@ -10,7 +10,7 @@ Requirement identifiers are stable references for feature specifications, implem
 
 ## 2. Product scope
 
-SEMS is a responsive web application for institutions and competition organizers to create, conduct, monitor and evaluate online examinations.
+Evalify is a responsive web application for institutions and competition organizers to create, conduct, monitor and evaluate online examinations.
 
 The system supports three account roles:
 

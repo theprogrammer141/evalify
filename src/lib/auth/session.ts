@@ -4,7 +4,8 @@ import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { sessions, users, type UserRole } from "@/lib/db/schema";
 
-export const SESSION_COOKIE_NAME = "sems_session";
+export const SESSION_COOKIE_NAME = "evalify_session";
+export const LEGACY_SESSION_COOKIE_NAME = "sems_session";
 export const SESSION_DURATION_SECONDS = 60 * 60 * 24 * 14;
 
 export type AuthenticatedUser = {
@@ -43,7 +44,10 @@ export async function revokeSession(token: string | undefined): Promise<void> {
 }
 
 export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
-  const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+  const cookieStore = await cookies();
+  const token =
+    cookieStore.get(SESSION_COOKIE_NAME)?.value ??
+    cookieStore.get(LEGACY_SESSION_COOKIE_NAME)?.value;
   if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
 
   const [user] = await db
