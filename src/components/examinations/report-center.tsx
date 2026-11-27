@@ -21,6 +21,11 @@ import type {
   listExaminerReportExaminations,
   listExaminerReports,
 } from "@/lib/reports/service";
+import { ArrowDownToLine, CircleAlert, LockKeyhole, QrCode } from "lucide-react";
+import type { listExaminerReports } from "@/lib/reports/service";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Spinner } from "@/components/ui/spinner";
+import { useToast } from "@/components/feedback-provider";
 
 type ExaminationList = Awaited<ReturnType<typeof listExaminerReportExaminations>>;
 type Performance = Awaited<ReturnType<typeof getExaminerPerformanceReport>>;
@@ -91,6 +96,8 @@ export function ReportCenter({
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [reportToRevoke, setReportToRevoke] = useState<string | null>(null);
+  const toast = useToast();
 
   const selectedCandidates =
     candidateReports.find((item) => item.id === selectedExaminationId)
@@ -187,6 +194,19 @@ export function ReportCenter({
 
       router.refresh();
       setNotice("Official candidate report issued.");
+      const report = body.report as NonNullable<CandidateReport["issuedReport"]>;
+      setExaminations((current) =>
+        current.map((examination) => ({
+          ...examination,
+          results: examination.results.map((result) =>
+            result.attemptId === attemptId
+              ? { ...result, issuedReport: report }
+              : result,
+          ),
+        })),
+      );
+      setNotice("");
+      toast("Official result report issued.");
     } catch {
       setError("The report could not be issued. Try again.");
     } finally {
@@ -195,9 +215,6 @@ export function ReportCenter({
   }
 
   async function revokeReport(reportId: string) {
-    if (!window.confirm("Revoke this report? Its verification status will change to revoked.")) {
-      return;
-    }
     setBusyReport(reportId);
     setError("");
     setNotice("");
@@ -211,6 +228,19 @@ export function ReportCenter({
       }
       router.refresh();
       setNotice("Report revoked. Its verification page will show that status.");
+
+      setExaminations((current) =>
+        current.map((examination) => ({
+          ...examination,
+          results: examination.results.map((result) =>
+            result.issuedReport?.id === reportId
+              ? { ...result, issuedReport: body.report }
+              : result,
+          ),
+        })),
+      );
+      setNotice("");
+      toast("Report revoked. Its verification page will show that status.");
     } catch {
       setError("The report could not be revoked. Try again.");
     } finally {
@@ -735,6 +765,71 @@ function Metric({
       {detail ? (
         <dd className="mt-1 text-sm text-muted-foreground">{detail}</dd>
       ) : null}
+                              className="min-h-11 px-3 text-sm font-medium text-destructive underline underline-offset-4 disabled:opacity-50"
+                              disabled={busyReport === result.issuedReport.id}
+                              onClick={() =>
+                                setReportToRevoke(result.issuedReport!.id)
+                              }
+                              type="button"
+                            >
+                              {busyReport === result.issuedReport.id
+                                ? <Spinner label="Revoking" />
+                                : "Revoke"}
+                            </button>
+                          </>
+                        ) : result.issuedReport?.status === "REVOKED" ? (
+                          <span className="border border-destructive/40 px-3 py-2 text-sm font-medium text-destructive">
+                            Report revoked
+                          </span>
+                        ) : result.publishedAt ? (
+                          <button
+                            className="inline-flex min-h-11 items-center justify-center border border-border px-4 text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={busyAttempt === result.attemptId}
+                            onClick={() => void issueReport(result.attemptId)}
+                            type="button"
+                          >
+                            {busyAttempt === result.attemptId
+                              ? <Spinner label="Issuing report" />
+                              : "Issue candidate report"}
+                          </button>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">
+                            Publish before issuing
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="border-y border-border py-12">
+          <h2 className="font-heading text-2xl">No completed attempts yet</h2>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
+            Examination reports will appear once candidates submit attempts and
+            those submissions enter the evaluation workflow.
+          </p>
+        </div>
+      )}
+      <ConfirmDialog
+        confirmLabel="Revoke report"
+        destructive
+        description="The report's verification status will change to revoked. This action cannot be undone."
+        onConfirm={() => {
+          const reportId = reportToRevoke;
+          setReportToRevoke(null);
+          if (reportId) void revokeReport(reportId);
+        }}
+        onOpenChange={(open) => {
+          if (!open) setReportToRevoke(null);
+        }}
+        open={reportToRevoke !== null}
+        pending={busyReport !== null}
+        title="Revoke this report?"
+      />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CalendarDays, Clock3, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ErrorMessage } from "@/components/ui/error-message";
 
 type ExaminationItem = {
   id: string;
@@ -122,12 +123,9 @@ export function ExaminationList({
   return (
     <div className="mt-9">
       {error && (
-        <p
-          className="mb-5 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-          role="alert"
-        >
+        <ErrorMessage className="mb-5 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3">
           {error}
-        </p>
+        </ErrorMessage>
       )}
       <div className="space-y-10">
         {groups.map((group) => (
@@ -206,6 +204,7 @@ export function ExaminationList({
                 <Button
                   className="w-full sm:w-auto"
                   disabled={!canOpen || startingId === examination.id}
+                  loading={startingId === examination.id}
                   onClick={() => void openExamination(examination)}
                   type="button"
                 >

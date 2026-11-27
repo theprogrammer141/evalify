@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, LoaderCircle } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { ErrorMessage } from "@/components/ui/error-message";
 
 export function AttemptEntry({
   examinationId,
@@ -76,20 +78,16 @@ export function AttemptEntry({
 
   if (loading) {
     return (
-      <p aria-live="polite" className="flex items-center gap-2 border-t border-border py-6 text-sm text-muted-foreground">
-        <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
-        Checking for an existing attempt
-      </p>
+      <Spinner
+        className="border-t border-border py-6 text-sm text-muted-foreground"
+        label="Checking for an existing attempt"
+      />
     );
   }
 
   return (
     <section className="border-t border-border pt-6">
-      {error && (
-        <p className="mb-4 text-sm text-destructive" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <ErrorMessage className="mb-4">{error}</ErrorMessage>}
       <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
         Your answers are recorded by the examination server. The deadline
         continues during connection interruptions.
@@ -98,6 +96,7 @@ export function AttemptEntry({
         <Button
           className="mt-5"
           disabled={starting}
+          loading={starting}
           onClick={() => void startAttempt()}
           type="button"
         >

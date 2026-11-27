@@ -22,6 +22,8 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/feedback-provider";
 
 type AttemptResponse =
   | { type: "options"; optionIds: string[] }
@@ -126,6 +128,8 @@ export function CandidateAttemptWorkspace({
     getServerConnectionState,
   );
   const [submitting, setSubmitting] = useState(false);
+  const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
+  const toast = useToast();
   const timers = useRef(new Map<string, number>());
   const queues = useRef(new Map<string, Promise<void>>());
   const versions = useRef(new Map<string, number>());
@@ -388,9 +392,6 @@ export function CandidateAttemptWorkspace({
 
   async function submitAttempt() {
     if (!attempt || attempt.status !== "IN_PROGRESS") return;
-    if (!window.confirm("Submit your examination? You cannot change answers after submission.")) {
-      return;
-    }
     setError("");
     setSubmitting(true);
     while (timers.current.size > 0) {
@@ -413,6 +414,7 @@ export function CandidateAttemptWorkspace({
         return;
       }
       await loadAttempt();
+      toast("Your examination has been submitted.");
       setSubmitting(false);
     } catch {
       setError("Could not reach the examination server to submit.");
@@ -781,7 +783,7 @@ export function CandidateAttemptWorkspace({
               <button
                 className="inline-flex min-h-11 items-center gap-2 bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:-translate-y-px hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
                 disabled={submitting}
-                onClick={() => void submitAttempt()}
+                onClick={() => setConfirmSubmitOpen(true)}
                 type="button"
               >
                 {submitting ? (
@@ -805,6 +807,19 @@ export function CandidateAttemptWorkspace({
           )}
         </section>
       )}
+      <ConfirmDialog
+        confirmLabel="Submit examination"
+        destructive
+        description="You cannot change your answers after submitting. Any unsaved answers must finish saving first."
+        onConfirm={() => {
+          setConfirmSubmitOpen(false);
+          void submitAttempt();
+        }}
+        onOpenChange={setConfirmSubmitOpen}
+        open={confirmSubmitOpen}
+        pending={submitting}
+        title="Submit your examination?"
+      />
     </div>
   );
 }

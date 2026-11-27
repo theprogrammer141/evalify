@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
+import { useToast } from "@/components/feedback-provider";
+import { Spinner } from "@/components/ui/spinner";
 
 type QuestionOption = { id: string; text: string };
 type QuestionType =
@@ -86,6 +88,7 @@ export function QuestionBankManager({
   const [notice, setNotice] = useState("");
   const [issues, setIssues] = useState<string[]>([]);
   const [pending, setPending] = useState(false);
+  const toast = useToast();
 
   const filteredQuestions = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -177,7 +180,8 @@ export function QuestionBankManager({
             )
           : [result.question, ...current],
       );
-      setNotice(editingId ? "Question updated." : "Question added to the bank.");
+      setNotice("");
+      toast(editingId ? "Question updated." : "Question added to the bank.");
       resetForm();
     } catch {
       setNotice("The question could not be saved. Try again.");
@@ -420,7 +424,7 @@ export function QuestionBankManager({
               type="submit"
             >
               {pending
-                ? "Saving"
+                ? <Spinner label="Saving question" />
                 : editingId
                   ? "Save question"
                   : "Add to question bank"}
@@ -435,13 +439,13 @@ export function QuestionBankManager({
               </button>
             )}
             {notice && (
-              <p aria-live="polite" className="text-sm text-muted-foreground">
+              <p aria-live="polite" className="text-sm text-destructive" role="alert">
                 {notice}
               </p>
             )}
           </div>
           {issues.length > 0 && (
-            <ul className="list-disc space-y-1 pl-5 text-sm text-destructive md:col-span-2">
+            <ul className="list-disc space-y-1 pl-5 text-sm text-destructive md:col-span-2" role="alert">
               {issues.map((issue, index) => (
                 <li key={`${issue}-${index}`}>{issue}</li>
               ))}

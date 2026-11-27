@@ -10,6 +10,9 @@ import {
   Trash2,
 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
+import { useToast } from "@/components/feedback-provider";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Spinner } from "@/components/ui/spinner";
 
 type ExamSettings = {
   id: string;
@@ -96,6 +99,7 @@ export function ExaminationSettingsForm({
   const [randomizeOptions, setRandomizeOptions] = useState(
     examination?.randomizeOptions ?? false,
   );
+  const toast = useToast();
 
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -153,7 +157,8 @@ export function ExaminationSettingsForm({
         return;
       }
 
-      setNotice("Examination settings saved.");
+      setNotice("");
+      toast("Examination settings saved.");
       router.refresh();
     } catch {
       setNotice("The examination settings could not be saved. Try again.");
@@ -266,13 +271,13 @@ export function ExaminationSettingsForm({
             type="submit"
           >
             {pending
-              ? "Saving…"
+              ? <Spinner label="Saving examination" />
               : examination
                 ? "Save settings"
                 : "Create draft"}
           </button>
           {notice && (
-            <p aria-live="polite" className="text-sm text-muted-foreground">
+            <p aria-live="polite" className="text-sm text-destructive" role="alert">
               {notice}
             </p>
           )}
@@ -312,6 +317,22 @@ export function ExaminationContents({
   const [issues, setIssues] = useState<string[]>([]);
   const [pending, setPending] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [pendingOperation, setPendingOperation] = useState<
+    | "add-question"
+    | "save-questions"
+    | "remove-question"
+    | "enroll"
+    | "remove-candidate"
+    | "publish"
+    | null
+  >(null);
+  const [removalPrompt, setRemovalPrompt] = useState<{
+    type: "question" | "candidate";
+    id: string;
+    label: string;
+  } | null>(null);
+  const [publishPromptOpen, setPublishPromptOpen] = useState(false);
+  const toast = useToast();
 
   const assignedQuestionIds = useMemo(
     () => new Set(assignments.map((question) => question.sourceQuestionId ?? question.id)),
@@ -330,6 +351,7 @@ export function ExaminationContents({
     event.preventDefault();
     if (!selectedQuestion) return;
     setPending(true);
+    setPendingOperation("add-question");
     setMessage("");
     try {
       const response = await fetch(
@@ -354,12 +376,14 @@ export function ExaminationContents({
         { ...result.question, marksInput: String(result.question.marks) },
       ]);
       setSelectedQuestion("");
-      setMessage("Question added to this examination.");
+      setMessage("");
+      toast("Question added to this examination.");
       router.refresh();
     } catch {
       setMessage("The question could not be added. Try again.");
     } finally {
       setPending(false);
+      setPendingOperation(null);
     }
   }
 
@@ -378,6 +402,7 @@ export function ExaminationContents({
 
   async function saveQuestions() {
     setPending(true);
+    setPendingOperation("save-questions");
     setMessage("");
     const items = assignments.map((question) => ({
       id: question.id,
@@ -390,6 +415,7 @@ export function ExaminationContents({
     ) {
       setMessage("Enter a positive whole-number mark for each question.");
       setPending(false);
+      setPendingOperation(null);
       return;
     }
 
@@ -414,17 +440,20 @@ export function ExaminationContents({
           position: position + 1,
         })),
       );
-      setMessage("Question order and marks saved.");
+      setMessage("");
+      toast("Question order and marks saved.");
       router.refresh();
     } catch {
       setMessage("The question order could not be saved. Try again.");
     } finally {
       setPending(false);
+      setPendingOperation(null);
     }
   }
 
   async function removeQuestion(assignmentId: string) {
     setPending(true);
+    setPendingOperation("remove-question");
     setMessage("");
     try {
       const response = await fetch(
@@ -445,12 +474,14 @@ export function ExaminationContents({
           .filter((question) => question.id !== assignmentId)
           .map((question, index) => ({ ...question, position: index + 1 })),
       );
-      setMessage("Question removed.");
+      setMessage("");
+      toast("Question removed.");
       router.refresh();
     } catch {
       setMessage("The question could not be removed. Try again.");
     } finally {
       setPending(false);
+      setPendingOperation(null);
     }
   }
 
@@ -478,6 +509,7 @@ export function ExaminationContents({
 
   async function enroll(candidateId: string) {
     setPending(true);
+    setPendingOperation("enroll");
     setMessage("");
     try {
       const response = await fetch(
@@ -508,17 +540,20 @@ export function ExaminationContents({
       setCandidateMatches((current) =>
         current.filter((item) => item.id !== candidateId),
       );
-      setMessage("Candidate enrolled.");
+      setMessage("");
+      toast("Candidate enrolled.");
       router.refresh();
     } catch {
       setMessage("The candidate could not be enrolled. Try again.");
     } finally {
       setPending(false);
+      setPendingOperation(null);
     }
   }
 
   async function removeCandidate(candidateId: string) {
     setPending(true);
+    setPendingOperation("remove-candidate");
     setMessage("");
     try {
       const response = await fetch(
@@ -537,17 +572,20 @@ export function ExaminationContents({
       setCandidates((current) =>
         current.filter((candidate) => candidate.id !== candidateId),
       );
-      setMessage("Enrollment removed.");
+      setMessage("");
+      toast("Enrollment removed.");
       router.refresh();
     } catch {
       setMessage("This enrollment could not be removed. Try again.");
     } finally {
       setPending(false);
+      setPendingOperation(null);
     }
   }
 
   async function publish() {
     setPending(true);
+    setPendingOperation("publish");
     setMessage("");
     setPublicationMessage("");
     setIssues([]);
@@ -566,7 +604,8 @@ export function ExaminationContents({
         );
         return;
       }
-      setPublicationMessage("Examination published.");
+      setPublicationMessage("");
+      toast("Examination published.");
       router.refresh();
     } catch {
       setPublicationMessage(
@@ -574,6 +613,7 @@ export function ExaminationContents({
       );
     } finally {
       setPending(false);
+      setPendingOperation(null);
     }
   }
 
@@ -660,10 +700,20 @@ export function ExaminationContents({
                     aria-label={`Remove question ${index + 1}`}
                     className="grid size-10 place-items-center border border-border text-muted-foreground transition hover:border-destructive hover:text-destructive disabled:opacity-40"
                     disabled={pending || isCompleted}
-                    onClick={() => removeQuestion(question.id)}
+                    onClick={() =>
+                      setRemovalPrompt({
+                        type: "question",
+                        id: question.id,
+                        label: question.prompt.slice(0, 100),
+                      })
+                    }
                     type="button"
                   >
-                    <Trash2 aria-hidden="true" className="size-4" />
+                    {pendingOperation === "remove-question" ? (
+                      <Spinner label="Removing question" />
+                    ) : (
+                      <Trash2 aria-hidden="true" className="size-4" />
+                    )}
                   </button>
                 </div>
               </li>
@@ -705,7 +755,7 @@ export function ExaminationContents({
               type="submit"
             >
               <CirclePlus aria-hidden="true" className="size-4" />
-              Add question
+              {pendingOperation === "add-question" ? <Spinner label="Adding question" /> : "Add question"}
             </button>
           </form>
           <button
@@ -714,7 +764,7 @@ export function ExaminationContents({
             onClick={saveQuestions}
             type="button"
           >
-            Save order and marks
+            {pendingOperation === "save-questions" ? <Spinner label="Saving questions" /> : "Save order and marks"}
           </button>
         </div>
       </section>
@@ -752,7 +802,7 @@ export function ExaminationContents({
             type="submit"
           >
             <Search aria-hidden="true" className="size-4" />
-            {searching ? "Searching" : "Find candidate"}
+            {searching ? <Spinner label="Searching candidates" /> : "Find candidate"}
           </button>
         </form>
 
@@ -774,8 +824,14 @@ export function ExaminationContents({
                   onClick={() => enroll(candidate.id)}
                   type="button"
                 >
-                  <CirclePlus aria-hidden="true" className="size-4" />
-                  Enroll
+                  {pendingOperation === "enroll" ? (
+                    <Spinner label="Enrolling candidate" />
+                  ) : (
+                    <>
+                      <CirclePlus aria-hidden="true" className="size-4" />
+                      Enroll
+                    </>
+                  )}
                 </button>
               </li>
             ))}
@@ -801,10 +857,20 @@ export function ExaminationContents({
                 <button
                   className="min-h-10 px-3 text-sm text-muted-foreground underline-offset-4 transition hover:text-foreground hover:underline disabled:opacity-40"
                   disabled={pending || isCompleted}
-                  onClick={() => removeCandidate(candidate.id)}
+                  onClick={() =>
+                    setRemovalPrompt({
+                      type: "candidate",
+                      id: candidate.id,
+                      label: candidate.email,
+                    })
+                  }
                   type="button"
                 >
-                  Remove enrollment
+                  {pendingOperation === "remove-candidate" ? (
+                    <Spinner label="Removing enrollment" />
+                  ) : (
+                    "Remove enrollment"
+                  )}
                 </button>
               </li>
             ))}
@@ -818,7 +884,7 @@ export function ExaminationContents({
       </section>
 
       {message && (
-        <p aria-live="polite" className="text-sm text-muted-foreground">
+        <p aria-live="polite" className="text-sm text-destructive" role="alert">
           {message}
         </p>
       )}
@@ -826,9 +892,42 @@ export function ExaminationContents({
         examination={examination}
         isCompleted={isCompleted}
         pending={pending}
-        publish={publish}
+        loading={pendingOperation === "publish"}
+        publish={() => setPublishPromptOpen(true)}
         issues={issues}
         message={publicationMessage}
+      />
+      <ConfirmDialog
+        confirmLabel="Publish examination"
+        description="Publishing makes this examination available to its enrolled candidates according to the schedule."
+        onConfirm={() => {
+          setPublishPromptOpen(false);
+          void publish();
+        }}
+        onOpenChange={setPublishPromptOpen}
+        open={publishPromptOpen}
+        title="Publish this examination?"
+      />
+      <ConfirmDialog
+        confirmLabel={removalPrompt?.type === "question" ? "Remove question" : "Remove enrollment"}
+        destructive
+        description={
+          removalPrompt?.type === "question"
+            ? `Remove "${removalPrompt.label}" from this examination?`
+            : `Remove ${removalPrompt?.label ?? "this candidate"} from the examination? They will lose eligibility to start an attempt.`
+        }
+        onConfirm={() => {
+          const removal = removalPrompt;
+          setRemovalPrompt(null);
+          if (removal?.type === "question") void removeQuestion(removal.id);
+          if (removal?.type === "candidate") void removeCandidate(removal.id);
+        }}
+        onOpenChange={(open) => {
+          if (!open) setRemovalPrompt(null);
+        }}
+        open={removalPrompt !== null}
+        pending={pending}
+        title={removalPrompt?.type === "question" ? "Remove this question?" : "Remove enrollment?"}
       />
     </div>
   );
@@ -838,6 +937,7 @@ function PublicationReview({
   examination,
   isCompleted,
   pending,
+  loading,
   publish,
   issues,
   message,
@@ -850,6 +950,7 @@ function PublicationReview({
   };
   isCompleted: boolean;
   pending: boolean;
+  loading: boolean;
   publish: () => void;
   issues: string[];
   message: string;
@@ -893,7 +994,7 @@ function PublicationReview({
             onClick={publish}
             type="button"
           >
-            {pending ? "Checking requirements" : "Publish examination"}
+            {loading ? <Spinner label="Checking requirements" /> : "Publish examination"}
           </button>
         ) : (
           <p className="border border-white/30 px-5 py-3 text-sm font-semibold">
@@ -902,12 +1003,12 @@ function PublicationReview({
         )}
       </div>
       {message && (
-        <p aria-live="polite" className="mt-5 text-sm text-white">
+        <p aria-live="polite" className="mt-5 text-sm text-white" role="alert">
           {message}
         </p>
       )}
       {issues.length > 0 && (
-        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-white/85">
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-white/85" role="alert">
           {issues.map((issue) => (
             <li key={issue}>{issue}</li>
           ))}

@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { LoaderCircle } from "lucide-react";
+import { ErrorMessage } from "@/components/ui/error-message";
 
 export function SignOutButton() {
   const router = useRouter();
@@ -32,12 +34,15 @@ export function SignOutButton() {
         onClick={signOut}
         type="button"
       >
-        {pending ? "Signing out…" : "Sign out"}
+        {pending ? (
+          <>
+            <LoaderCircle aria-hidden="true" className="mr-2 inline size-4 animate-spin" />
+            Signing out…
+          </>
+        ) : "Sign out"}
       </button>
       {error && (
-        <span aria-live="polite" className="text-xs text-destructive">
-          {error}
-        </span>
+        <ErrorMessage className="text-xs">{error}</ErrorMessage>
       )}
     </div>
   );
