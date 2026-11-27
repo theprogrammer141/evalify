@@ -9,7 +9,6 @@ examiners and candidates.
 2. Set `DATABASE_URL` in `.env.local` to a PostgreSQL connection URL. The
    application validates that it includes a PostgreSQL protocol, host, username
    and password when the server starts.
-3. Apply the identity, examination and monitoring schemas with `npm run db:migrate`.
 3. Apply the database schema with `npm run db:migrate`.
 4. Configure `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` in
    `.env.local`, then run `npm run db:bootstrap-admin`. Use a unique password of
@@ -33,6 +32,14 @@ browser-level events; it does not infer a candidate's connection state or make
 misconduct decisions. Examination totals are calculated from assigned question
 marks and persisted with each change. Schedule availability is evaluated on
 the server in UTC.
+
+Examiners grade and finalize submitted attempts before explicitly publishing
+results. The Reports workspace creates examination-performance PDF previews
+from persisted data and lets examiners issue or revoke candidate result reports.
+Issued reports contain a random verification reference and QR code. Candidates
+can download only their own issued reports; public verification confirms valid,
+revoked or nonexistent status without exposing candidate details or marks.
+
 Configure `CRON_SECRET` in the deployment environment so the scheduled Vercel
 expiry route can finalize disconnected attempts. The route also checks expiry
 on candidate access and answer/submission requests.
@@ -43,7 +50,7 @@ on candidate access and answer/submission requests.
 - `npm run build` — create a production build.
 - `npm run start` — serve the production build.
 - `npm run lint` — run ESLint on application and configuration code.
-- `npm test` — run focused authentication and attempt-validation tests.
+- `npm test` — run focused validation, grading and PDF-generation tests.
 - `npx playwright install chromium` — install the browser used by end-to-end tests.
 - `npm run test:e2e` — start the local app and run Chromium end-to-end tests.
 - `PLAYWRIGHT_BASE_URL=http://127.0.0.1:3000 npm run test:e2e` — run against an already-running local app instead.
@@ -55,12 +62,7 @@ candidate accounts, examinations and questions, then removes those records
 after the test. Point it at a migrated, disposable PostgreSQL database only;
 an interrupted test process can prevent its cleanup from running.
 
-Phase 2 adds examination setup, question-bank management, enrollment and
-candidate-facing examination listings. Phase 4 adds the minimum attempt
-delivery needed to persist and monitor progress, incident review, and
-candidate/examiner announcements. Grading and result publication remain out of
-scope.
-The database currently includes identity/session tables and the minimal
-examination, question, enrollment and attempt records required for candidate
-delivery. Examination authoring, grading and result publication are separate
-phases.
+The database includes identity and session records, examinations, question
+snapshots, candidate attempts, grading history, result publication and issued
+report verification records. Every protected report operation checks both the
+user role and the relevant examination or candidate relationship.

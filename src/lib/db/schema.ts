@@ -20,6 +20,7 @@ import type {
   AttemptSnapshot,
   MarkingRules,
 } from "@/lib/attempts/types";
+import type { IssuedReportSnapshot } from "@/lib/reports/validation";
 
 export const userRole = pgEnum("user_role", [
   "ADMIN",
@@ -69,6 +70,11 @@ export const evaluationHistoryAction = pgEnum("evaluation_history_action", [
   "EVALUATION_CREATED",
   "MARKS_UPDATED",
   "FINALIZED",
+]);
+
+export const issuedReportStatus = pgEnum("issued_report_status", [
+  "VALID",
+  "REVOKED",
 ]);
 
 export const monitoringEventType = pgEnum("monitoring_event_type", [
@@ -471,6 +477,10 @@ export const evaluations = pgTable(
       onDelete: "restrict",
     }),
     finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+    publishedBy: uuid("published_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -496,6 +506,10 @@ export const evaluations = pgTable(
     check(
       "evaluations_finalization_consistent",
       sql`(${table.status} = 'FINALIZED' and ${table.finalizedBy} is not null and ${table.finalizedAt} is not null) or (${table.status} <> 'FINALIZED' and ${table.finalizedBy} is null and ${table.finalizedAt} is null)`,
+    ),
+    check(
+      "evaluations_publication_consistent",
+      sql`(${table.publishedBy} is null and ${table.publishedAt} is null) or (${table.status} = 'FINALIZED' and ${table.publishedBy} is not null and ${table.publishedAt} is not null)`,
     ),
   ],
 );
@@ -580,6 +594,75 @@ export const evaluationHistory = pgTable(
       columns: [table.evaluationId, table.attemptId],
       foreignColumns: [evaluations.id, evaluations.attemptId],
     }).onDelete("cascade"),
+  ],
+);
+
+export const issuedReports = pgTable(
+  "issued_reports",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    examinationId: uuid("examination_id")
+      .notNull()
+      .references(() => examinations.id, { onDelete: "restrict" }),
+    attemptId: uuid("attempt_id")
+      .notNull()
+      .references(() => attempts.id, { onDelete: "restrict" }),
+    evaluationId: uuid("evaluation_id")
+      .notNull()
+      .unique()
+      .references(() => evaluations.id, { onDelete: "restrict" }),
+    candidateId: uuid("candidate_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    verificationToken: varchar("verification_token", { length: 64 })
+      .notNull()
+      .unique(),
+    reportSnapshot: jsonb("report_snapshot")
+      .$type<IssuedReportSnapshot>()
+      .notNull(),
+    status: issuedReportStatus("status").notNull().default("VALID"),
+    issuedBy: uuid("issued_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    issuedAt: timestamp("issued_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    revokedBy: uuid("revoked_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("issued_reports_candidate_issued_idx").on(
+      table.candidateId,
+      table.issuedAt,
+    ),
+    index("issued_reports_examination_issued_idx").on(
+      table.examinationId,
+      table.issuedAt,
+    ),
+    foreignKey({
+      name: "issued_reports_evaluation_attempt_fk",
+      columns: [table.evaluationId, table.attemptId],
+      foreignColumns: [evaluations.id, evaluations.attemptId],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "issued_reports_attempt_identity_fk",
+      columns: [table.examinationId, table.candidateId],
+      foreignColumns: [attempts.examinationId, attempts.candidateId],
+    }).onDelete("restrict"),
+    check(
+      "issued_reports_token_format",
+      sql`${table.verificationToken} ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      "issued_reports_snapshot_object",
+      sql`jsonb_typeof(${table.reportSnapshot}) = 'object'`,
+    ),
+    check(
+      "issued_reports_revocation_consistent",
+      sql`(${table.status} = 'VALID' and ${table.revokedBy} is null and ${table.revokedAt} is null) or (${table.status} = 'REVOKED' and ${table.revokedBy} is not null and ${table.revokedAt} is not null)`,
+    ),
   ],
 );
 

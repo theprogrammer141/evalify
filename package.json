@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint src scripts instrumentation.ts next.config.ts neon.ts",
-    "test": "tsx --test src/lib/auth/validation.test.ts src/lib/attempts/validation.test.ts src/lib/attempts/state.test.ts src/lib/examinations/validation.test.ts src/lib/monitoring/validation.test.ts src/lib/monitoring/progress.test.ts src/lib/evaluations/logic.test.ts",
+    "test": "tsx --test src/lib/auth/validation.test.ts src/lib/attempts/validation.test.ts src/lib/attempts/state.test.ts src/lib/examinations/validation.test.ts src/lib/monitoring/validation.test.ts src/lib/monitoring/progress.test.ts src/lib/evaluations/logic.test.ts src/lib/reports/pdf.test.ts src/lib/reports/validation.test.ts",
     "test:e2e": "playwright test",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:bootstrap-admin": "tsx scripts/bootstrap-admin.ts"
@@ -39,6 +39,7 @@
     "@playwright/test": "^1.65.1",
     "@tailwindcss/turbopack": "4.3.3",
     "@types/node": "^20",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
