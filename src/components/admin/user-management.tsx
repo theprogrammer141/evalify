@@ -3,6 +3,8 @@
 import { useState, type FormEvent } from "react";
 import type { UserRole } from "@/lib/db/schema";
 import { roleSchema } from "@/lib/auth/validation";
+import { useToast } from "@/components/feedback-provider";
+import { Spinner } from "@/components/ui/spinner";
 
 type Account = {
   id: string;
@@ -25,12 +27,15 @@ export function UserManagement({
     Object.fromEntries(initialUsers.map((user) => [user.id, user.role])),
   );
   const [notice, setNotice] = useState("");
-  const [pending, setPending] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [savingRole, setSavingRole] = useState<string | null>(null);
+  const pending = creating || savingRole !== null;
+  const toast = useToast();
 
   async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setNotice("");
-    setPending(true);
+    setCreating(true);
     const form = event.currentTarget;
     const formData = new FormData(form);
 
@@ -49,7 +54,7 @@ export function UserManagement({
         setNotice(
           result.error === "email_in_use"
             ? "An account already uses that email."
-            : result.message ?? "Could not create the account.",
+            : "Could not create the account.",
         );
         return;
       }
@@ -60,17 +65,18 @@ export function UserManagement({
         [result.user.id]: result.user.role,
       }));
       form.reset();
-      setNotice("Account created.");
+      setNotice("");
+      toast("Account created.");
     } catch {
       setNotice("Unable to create the account right now.");
     } finally {
-      setPending(false);
+      setCreating(false);
     }
   }
 
   async function saveRole(userId: string) {
     setNotice("");
-    setPending(true);
+    setSavingRole(userId);
     try {
       const response = await fetch(`/api/v1/admin/users/${userId}`, {
         method: "PATCH",
@@ -93,16 +99,22 @@ export function UserManagement({
           user.id === userId ? { ...user, role: result.user.role } : user,
         ),
       );
-      setNotice("Role updated.");
+      setNotice("");
+      toast("Role updated.");
     } catch {
       setNotice("Unable to update the role right now.");
     } finally {
-      setPending(false);
+      setSavingRole(null);
     }
   }
 
   return (
     <div className="space-y-12">
+      {notice && (
+        <p aria-live="polite" className="text-sm text-destructive" role="alert">
+          {notice}
+        </p>
+      )}
       <section className="rounded-lg border border-border bg-card p-6 sm:p-8">
         <div className="mb-6">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -155,15 +167,10 @@ export function UserManagement({
               disabled={pending}
               type="submit"
             >
-              Create account
+              {creating ? <Spinner label="Creating account" /> : "Create account"}
             </button>
           </div>
         </form>
-        {notice && (
-          <p aria-live="polite" className="mt-4 text-sm text-muted-foreground">
-            {notice}
-          </p>
-        )}
       </section>
 
       <section>
@@ -227,16 +234,11 @@ export function UserManagement({
                 onClick={() => saveRole(user.id)}
                 type="button"
               >
-                Save role
+                {savingRole === user.id ? <Spinner label="Saving role" /> : "Save role"}
               </button>
             </div>
           ))}
         </div>
-        {notice && (
-          <p aria-live="polite" className="mt-4 text-sm text-muted-foreground">
-            {notice}
-          </p>
-        )}
       </section>
     </div>
   );

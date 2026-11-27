@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useState } from "react";
 import { ArrowDownToLine, CircleAlert, LockKeyhole, QrCode } from "lucide-react";
 import type { listExaminerReports } from "@/lib/reports/service";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Spinner } from "@/components/ui/spinner";
+import { useToast } from "@/components/feedback-provider";
 
 type ExaminationReports = Awaited<ReturnType<typeof listExaminerReports>>;
 type ExaminationReport = ExaminationReports[number];
@@ -36,6 +39,8 @@ export function ReportCenter({
   const [busyReport, setBusyReport] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [reportToRevoke, setReportToRevoke] = useState<string | null>(null);
+  const toast = useToast();
 
   async function issueReport(attemptId: string) {
     setBusyAttempt(attemptId);
@@ -70,7 +75,8 @@ export function ReportCenter({
           ),
         })),
       );
-      setNotice("Official result report issued.");
+      setNotice("");
+      toast("Official result report issued.");
     } catch {
       setError("The report could not be issued. Try again.");
     } finally {
@@ -79,9 +85,6 @@ export function ReportCenter({
   }
 
   async function revokeReport(reportId: string) {
-    if (!window.confirm("Revoke this report? Its verification status will change to revoked.")) {
-      return;
-    }
     setBusyReport(reportId);
     setError("");
     setNotice("");
@@ -105,7 +108,8 @@ export function ReportCenter({
           ),
         })),
       );
-      setNotice("Report revoked. Its verification page will show that status.");
+      setNotice("");
+      toast("Report revoked. Its verification page will show that status.");
     } catch {
       setError("The report could not be revoked. Try again.");
     } finally {
@@ -243,12 +247,12 @@ export function ReportCenter({
                               className="min-h-11 px-3 text-sm font-medium text-destructive underline underline-offset-4 disabled:opacity-50"
                               disabled={busyReport === result.issuedReport.id}
                               onClick={() =>
-                                void revokeReport(result.issuedReport!.id)
+                                setReportToRevoke(result.issuedReport!.id)
                               }
                               type="button"
                             >
                               {busyReport === result.issuedReport.id
-                                ? "Revoking"
+                                ? <Spinner label="Revoking" />
                                 : "Revoke"}
                             </button>
                           </>
@@ -264,7 +268,7 @@ export function ReportCenter({
                             type="button"
                           >
                             {busyAttempt === result.attemptId
-                              ? "Issuing report"
+                              ? <Spinner label="Issuing report" />
                               : "Issue candidate report"}
                           </button>
                         ) : (
@@ -289,6 +293,22 @@ export function ReportCenter({
           </p>
         </div>
       )}
+      <ConfirmDialog
+        confirmLabel="Revoke report"
+        destructive
+        description="The report's verification status will change to revoked. This action cannot be undone."
+        onConfirm={() => {
+          const reportId = reportToRevoke;
+          setReportToRevoke(null);
+          if (reportId) void revokeReport(reportId);
+        }}
+        onOpenChange={(open) => {
+          if (!open) setReportToRevoke(null);
+        }}
+        open={reportToRevoke !== null}
+        pending={busyReport !== null}
+        title="Revoke this report?"
+      />
     </div>
   );
 }

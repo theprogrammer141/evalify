@@ -2,6 +2,8 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { LoaderCircle } from "lucide-react";
+import { ErrorMessage } from "@/components/ui/error-message";
 
 export function SignInForm() {
   const router = useRouter();
@@ -60,17 +62,18 @@ export function SignInForm() {
           type="password"
         />
       </label>
-      {error && (
-        <p aria-live="polite" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
+      {error && <ErrorMessage>{error}</ErrorMessage>}
       <button
         className="flex h-12 w-full items-center justify-center rounded-md bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={pending}
         type="submit"
       >
-        {pending ? "Signing in…" : "Sign in"}
+        {pending ? (
+          <>
+            <LoaderCircle aria-hidden="true" className="mr-2 size-4 animate-spin" />
+            Signing in…
+          </>
+        ) : "Sign in"}
       </button>
     </form>
   );

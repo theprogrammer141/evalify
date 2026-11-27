@@ -9,6 +9,9 @@ import {
   LockKeyhole,
   Save,
 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Spinner } from "@/components/ui/spinner";
+import { useToast } from "@/components/feedback-provider";
 import type { AttemptAnswerValue } from "@/lib/attempts/types";
 import type { getExaminerEvaluation } from "@/lib/evaluations/service";
 
@@ -94,6 +97,10 @@ export function EvaluationWorkspace({
   const [publishing, setPublishing] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [confirmAction, setConfirmAction] = useState<"finalize" | "publish" | null>(
+    null,
+  );
+  const toast = useToast();
   const isFinalized = evaluation.status === "FINALIZED";
   const isPublished = evaluation.publishedAt !== null;
   const canFinalize =
@@ -155,7 +162,8 @@ export function EvaluationWorkspace({
 
       setEvaluation(result.evaluation as Evaluation);
       setDrafts(draftValues(result.evaluation.questions));
-      setNotice("Marks and feedback saved.");
+      setNotice("");
+      toast("Marks and feedback saved.");
     } catch {
       setError("The question evaluation could not be saved. Try again.");
     } finally {
@@ -164,9 +172,6 @@ export function EvaluationWorkspace({
   }
 
   async function finalize() {
-    if (!window.confirm("Finalize this evaluation? It cannot be edited afterward.")) {
-      return;
-    }
     setFinalizing(true);
     setError("");
     setNotice("");
@@ -195,7 +200,8 @@ export function EvaluationWorkspace({
       }
       setEvaluation(result.evaluation as Evaluation);
       setDrafts(draftValues(result.evaluation.questions));
-      setNotice("Evaluation finalized. Marks and feedback are now locked.");
+      setNotice("");
+      toast("Evaluation finalized. Marks and feedback are now locked.");
     } catch {
       setError("The evaluation could not be finalized. Try again.");
     } finally {
@@ -204,14 +210,6 @@ export function EvaluationWorkspace({
   }
 
   async function publish() {
-    if (
-      !window.confirm(
-        "Publish this finalized result? The candidate will be able to access issued reports for it.",
-      )
-    ) {
-      return;
-    }
-
     setPublishing(true);
     setError("");
     setNotice("");
@@ -231,7 +229,8 @@ export function EvaluationWorkspace({
       }
 
       setEvaluation(result.evaluation as Evaluation);
-      setNotice("Result published. The candidate can now receive an official report.");
+      setNotice("");
+      toast("Result published. The candidate can now receive an official report.");
     } catch {
       setError("The result could not be published. Try again.");
     } finally {
@@ -449,7 +448,7 @@ export function EvaluationWorkspace({
                       >
                         <Save aria-hidden="true" className="size-4" />
                         {savingQuestion === question.id
-                          ? "Saving"
+                          ? <Spinner label="Saving" />
                           : "Save marks and feedback"}
                       </button>
                     </div>
@@ -576,16 +575,16 @@ export function EvaluationWorkspace({
             <button
               className="inline-flex min-h-11 items-center justify-center gap-2 border border-border px-5 text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
               disabled={publishing}
-              onClick={() => void publish()}
+              onClick={() => setConfirmAction("publish")}
               type="button"
             >
-              {publishing ? "Publishing result" : "Publish result"}
+              {publishing ? <Spinner label="Publishing result" /> : "Publish result"}
             </button>
           ) : null}
           <button
             className="inline-flex min-h-11 items-center justify-center gap-2 bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:-translate-y-px hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
             disabled={!canFinalize || finalizing || savingQuestion !== null}
-            onClick={() => void finalize()}
+            onClick={() => setConfirmAction("finalize")}
             type="button"
           >
             {isFinalized ? (
@@ -594,13 +593,34 @@ export function EvaluationWorkspace({
                 Evaluation finalized
               </>
             ) : finalizing ? (
-              "Finalizing"
+              <Spinner label="Finalizing" />
             ) : (
               "Finalize evaluation"
             )}
           </button>
         </div>
       </footer>
+      <ConfirmDialog
+        confirmLabel={confirmAction === "finalize" ? "Finalize evaluation" : "Publish result"}
+        destructive={confirmAction === "finalize"}
+        description={
+          confirmAction === "finalize"
+            ? "Finalizing locks marks and feedback so this evaluation can no longer be edited."
+            : "Publishing makes this finalized result available to the candidate for official reporting."
+        }
+        onConfirm={() => {
+          const action = confirmAction;
+          setConfirmAction(null);
+          if (action === "finalize") void finalize();
+          if (action === "publish") void publish();
+        }}
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null);
+        }}
+        open={confirmAction !== null}
+        pending={finalizing || publishing}
+        title={confirmAction === "finalize" ? "Finalize this evaluation?" : "Publish this result?"}
+      />
     </div>
   );
 }
