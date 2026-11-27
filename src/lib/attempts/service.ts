@@ -74,7 +74,9 @@ async function getDatabaseNow(
   candidateId: string,
 ): Promise<Date> {
   const [row] = await transaction
-    .select({ now: sql<Date>`clock_timestamp()` })
+    .select({
+      now: sql<Date>`clock_timestamp()`.mapWith(examinations.opensAt),
+    })
     .from(users)
     .where(eq(users.id, candidateId))
     .limit(1);
@@ -235,7 +237,9 @@ export async function listCandidateExaminations(candidateId: string) {
   }
 
   const [serverNow] = await db
-    .select({ now: sql<Date>`clock_timestamp()` })
+    .select({
+      now: sql<Date>`clock_timestamp()`.mapWith(examinations.opensAt),
+    })
     .from(users)
     .where(eq(users.id, candidateId))
     .limit(1);
@@ -522,7 +526,9 @@ export async function saveCandidateAnswer(input: {
     if (!attempt) throw new AttemptServiceError("not_found", 404);
 
     const [nowRow] = await transaction
-      .select({ now: sql<Date>`clock_timestamp()` })
+      .select({
+        now: sql<Date>`clock_timestamp()`.mapWith(examinations.opensAt),
+      })
       .from(users)
       .where(eq(users.id, input.candidateId))
       .limit(1);
