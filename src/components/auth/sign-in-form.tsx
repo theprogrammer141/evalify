@@ -45,7 +45,7 @@ export function SignInForm() {
         <span>Email address</span>
         <input
           autoComplete="email"
-          className="h-12 w-full border border-border bg-background px-4 text-base outline-none transition focus:border-foreground"
+          className="h-12 w-full rounded-md border border-input bg-background px-4 text-base outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
           name="email"
           required
           type="email"
@@ -55,7 +55,7 @@ export function SignInForm() {
         <span>Password</span>
         <input
           autoComplete="current-password"
-          className="h-12 w-full border border-border bg-background px-4 text-base outline-none transition focus:border-foreground"
+          className="h-12 w-full rounded-md border border-input bg-background px-4 text-base outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
           name="password"
           required
           type="password"
@@ -67,7 +67,7 @@ export function SignInForm() {
         </p>
       )}
       <button
-        className="flex h-12 w-full items-center justify-center bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex h-12 w-full items-center justify-center rounded-md bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={pending}
         type="submit"
       >

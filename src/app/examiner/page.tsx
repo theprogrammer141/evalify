@@ -13,7 +13,7 @@ export default async function ExaminerPage() {
           Examiner workspace
         </p>
         <h1 className="mt-3 font-heading text-4xl">Examination workspace</h1>
-        <div className="mt-10 border border-border bg-background p-8 sm:p-10">
+        <div className="mt-10 rounded-lg border border-border bg-background p-8 sm:p-10">
           <p className="font-heading text-2xl">Nothing to review yet</p>
           <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
             Your examination workspace is ready. Examination preparation and

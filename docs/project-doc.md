@@ -1,4 +1,4 @@
-# Secure Examination Management System (SEMS)
+# Evalify — Product Decisions
 
 The product decisions behind this build, written before implementation, with the reasoning attached. The reasoning matters as much as the decisions: the feature specifications will describe individual pieces of work, but they cannot anticipate every implementation choice. When a situation is not covered by a spec, use the principles in this document to make a consistent decision.
 
@@ -6,7 +6,7 @@ Read the section relevant to the work in front of you. Do not treat this documen
 
 ## What it is
 
-SEMS is a web application for institutions and competition organizers to create, conduct, monitor and evaluate online examinations.
+Evalify is a web application for institutions and competition organizers to create, conduct, monitor and evaluate online examinations.
 
 An administrator manages users and their roles. An examiner creates an examination, prepares questions, enrolls candidates and publishes the examination. Candidates see the examinations assigned to them, complete an attempt in a focused workspace, and submit their answers. The examiner monitors the examination, reviews submissions, grades written responses, checks the results and publishes them. Candidates can then view their own published results.
 

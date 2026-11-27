@@ -103,7 +103,7 @@ export function UserManagement({
 
   return (
     <div className="space-y-12">
-      <section className="border border-border bg-card p-6 sm:p-8">
+      <section className="rounded-lg border border-border bg-card p-6 sm:p-8">
         <div className="mb-6">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             Account management
@@ -118,7 +118,7 @@ export function UserManagement({
             <span>Email address</span>
             <input
               autoComplete="off"
-              className="h-11 w-full border border-border bg-background px-3 outline-none focus:border-foreground"
+              className="h-11 w-full rounded-md border border-input bg-background px-3 outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
               name="email"
               required
               type="email"
@@ -128,7 +128,7 @@ export function UserManagement({
             <span>Temporary password (at least 12 characters)</span>
             <input
               autoComplete="new-password"
-              className="h-11 w-full border border-border bg-background px-3 outline-none focus:border-foreground"
+              className="h-11 w-full rounded-md border border-input bg-background px-3 outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
               minLength={12}
               name="password"
               required
@@ -138,7 +138,7 @@ export function UserManagement({
           <label className="space-y-2 text-sm font-medium">
             <span>Role</span>
             <select
-              className="h-11 w-full border border-border bg-background px-3 outline-none focus:border-foreground"
+              className="h-11 w-full rounded-md border border-input bg-background px-3 outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
               defaultValue="CANDIDATE"
               name="role"
             >
@@ -151,7 +151,7 @@ export function UserManagement({
           </label>
           <div className="flex items-end">
             <button
-              className="h-11 w-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:opacity-85 disabled:opacity-60"
+              className="h-11 w-full rounded-md bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-60"
               disabled={pending}
               type="submit"
             >
@@ -198,7 +198,7 @@ export function UserManagement({
                 Role for {user.email}
               </label>
               <select
-                className="h-10 border border-border bg-background px-3 text-xs font-semibold tracking-wider"
+                className="h-10 rounded-md border border-input bg-background px-3 text-xs font-semibold tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
                 id={`role-${user.id}`}
                 onChange={(event) => {
                   const role = roleSchema.safeParse(event.target.value);
@@ -218,7 +218,7 @@ export function UserManagement({
                 ))}
               </select>
               <button
-                className="h-10 border border-border px-4 text-xs font-semibold uppercase tracking-wider transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-10 rounded-md border border-border px-4 text-xs font-semibold uppercase tracking-wider transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={
                   pending ||
                   user.id === currentUserId ||
