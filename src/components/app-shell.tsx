@@ -18,9 +18,13 @@ const workspaceLinks = {
   EXAMINER: [
     { href: "/examiner", label: "Examinations" },
     { href: "/examiner/evaluations", label: "Evaluation queue" },
+    { href: "/examiner/reports", label: "Reports" },
     { href: "/examiner/questions", label: "Question bank" },
   ],
-  CANDIDATE: [{ href: "/candidate", label: "Your examinations" }],
+  CANDIDATE: [
+    { href: "/candidate", label: "Your examinations" },
+    { href: "/candidate/results", label: "Result reports" },
+  ],
 };
 
 export function AppShell({

@@ -34,6 +34,7 @@ export class EvaluationServiceError extends Error {
       | "invalid_attempt_state"
       | "invalid_marks"
       | "not_found"
+      | "not_finalized"
       | "question_not_manual"
       | "revision_conflict",
     readonly status: number,
@@ -209,6 +210,7 @@ export async function listExaminerEvaluations(examinerId: string) {
         manualMarks: evaluations.manualMarks,
         revision: evaluations.revision,
         finalizedAt: evaluations.finalizedAt,
+        publishedAt: evaluations.publishedAt,
         submittedAt: attempts.finalizedAt,
         candidateEmail: users.email,
         snapshot: attempts.snapshot,
@@ -264,6 +266,7 @@ export async function listExaminerEvaluations(examinerId: string) {
         ).length,
         revision: row.revision,
         finalizedAt: row.finalizedAt?.toISOString() ?? null,
+        publishedAt: row.publishedAt?.toISOString() ?? null,
       };
     });
   });
@@ -388,6 +391,7 @@ export async function getExaminerEvaluation(
       manualMaximumMarks,
       revision: row.revision,
       finalizedAt: row.finalizedAt?.toISOString() ?? null,
+      publishedAt: row.publishedAt?.toISOString() ?? null,
       examTitle: snapshot.examTitle,
       instructions: snapshot.instructions,
       candidateEmail: metadata.candidateEmail,
@@ -610,6 +614,54 @@ export async function finalizeEvaluation(input: {
         finalizedAt: now.toISOString(),
       },
     });
+  });
+
+  return getExaminerEvaluation(input.examinerId, input.attemptId);
+}
+
+export async function publishEvaluation(input: {
+  examinerId: string;
+  attemptId: string;
+}) {
+  await db.transaction(async (transaction) => {
+    const [evaluation] = await transaction
+      .select()
+      .from(evaluations)
+      .where(
+        and(
+          eq(evaluations.attemptId, input.attemptId),
+          eq(evaluations.examinerId, input.examinerId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!evaluation) throw new EvaluationServiceError("not_found", 404);
+    if (evaluation.publishedAt) return;
+    if (evaluation.status !== "FINALIZED") {
+      throw new EvaluationServiceError("not_finalized", 409);
+    }
+
+    const [access] = await transaction
+      .select({ id: examinations.id })
+      .from(attempts)
+      .innerJoin(examinations, eq(attempts.examinationId, examinations.id))
+      .where(
+        and(
+          eq(attempts.id, input.attemptId),
+          eq(examinations.examinerId, input.examinerId),
+        ),
+      )
+      .limit(1);
+    if (!access) throw new EvaluationServiceError("not_found", 404);
+
+    await transaction
+      .update(evaluations)
+      .set({
+        publishedBy: input.examinerId,
+        publishedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(evaluations.id, evaluation.id));
   });
 
   return getExaminerEvaluation(input.examinerId, input.attemptId);

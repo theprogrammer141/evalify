@@ -91,9 +91,11 @@ export function EvaluationWorkspace({
   );
   const [savingQuestion, setSavingQuestion] = useState<string | null>(null);
   const [finalizing, setFinalizing] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const isFinalized = evaluation.status === "FINALIZED";
+  const isPublished = evaluation.publishedAt !== null;
   const canFinalize =
     evaluation.status === "AUTO_GRADED" ||
     evaluation.status === "COMPLETED";
@@ -201,6 +203,42 @@ export function EvaluationWorkspace({
     }
   }
 
+  async function publish() {
+    if (
+      !window.confirm(
+        "Publish this finalized result? The candidate will be able to access issued reports for it.",
+      )
+    ) {
+      return;
+    }
+
+    setPublishing(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(
+        `/api/v1/examiner/evaluations/${evaluation.attemptId}/publish`,
+        { method: "POST" },
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        setError(
+          result.error === "not_finalized"
+            ? "Finalize this evaluation before publishing the result."
+            : "The result could not be published.",
+        );
+        return;
+      }
+
+      setEvaluation(result.evaluation as Evaluation);
+      setNotice("Result published. The candidate can now receive an official report.");
+    } catch {
+      setError("The result could not be published. Try again.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   return (
     <div className="space-y-9">
       <header className="border-b border-border pb-7">
@@ -285,6 +323,12 @@ export function EvaluationWorkspace({
             <p className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700">
               <Check aria-hidden="true" className="size-4" />
               Finalized {formatDate(evaluation.finalizedAt)} UTC
+            </p>
+          ) : null}
+          {isPublished ? (
+            <p className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700">
+              <Check aria-hidden="true" className="size-4" />
+              Published {formatDate(evaluation.publishedAt)} UTC
             </p>
           ) : null}
         </div>
@@ -527,23 +571,35 @@ export function EvaluationWorkspace({
             </p>
           ) : null}
         </div>
-        <button
-          className="inline-flex min-h-11 items-center justify-center gap-2 bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:-translate-y-px hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={!canFinalize || finalizing || savingQuestion !== null}
-          onClick={() => void finalize()}
-          type="button"
-        >
-          {isFinalized ? (
-            <>
-              <LockKeyhole aria-hidden="true" className="size-4" />
-              Evaluation finalized
-            </>
-          ) : finalizing ? (
-            "Finalizing"
-          ) : (
-            "Finalize evaluation"
-          )}
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          {isFinalized && !isPublished ? (
+            <button
+              className="inline-flex min-h-11 items-center justify-center gap-2 border border-border px-5 text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={publishing}
+              onClick={() => void publish()}
+              type="button"
+            >
+              {publishing ? "Publishing result" : "Publish result"}
+            </button>
+          ) : null}
+          <button
+            className="inline-flex min-h-11 items-center justify-center gap-2 bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:-translate-y-px hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!canFinalize || finalizing || savingQuestion !== null}
+            onClick={() => void finalize()}
+            type="button"
+          >
+            {isFinalized ? (
+              <>
+                <LockKeyhole aria-hidden="true" className="size-4" />
+                Evaluation finalized
+              </>
+            ) : finalizing ? (
+              "Finalizing"
+            ) : (
+              "Finalize evaluation"
+            )}
+          </button>
+        </div>
       </footer>
     </div>
   );
