@@ -1,6 +1,6 @@
 # Phase 1 — Authentication and role-based access
 
-**Goal.** An administrator, examiner or candidate can sign in to SEMS with an authorized account, and the application consistently knows who they are and what their role allows them to access. Each person lands in the appropriate role workspace. Protected pages and operations remain inaccessible unless the request is authenticated and authorized on the server.
+**Goal.** An administrator, examiner or candidate can sign in to Evalify with an authorized account, and the application consistently knows who they are and what their role allows them to access. Each person lands in the appropriate role workspace. Protected pages and operations remain inaccessible unless the request is authenticated and authorized on the server.
 
 ## Build
 
@@ -47,7 +47,7 @@
 - Question bank management, question assignment or answer-key storage.
 - Candidate enrollment, examination attempts, answer saving or examination timing.
 - Monitoring, incident recording, announcements, grading, results or analytics.
-- Organization/team creation, membership, invitations or tenant switching. SEMS uses the three agreed application roles; the organization model from the reference specification does not apply.
+- Organization/team creation, membership, invitations or tenant switching. Evalify uses the three agreed application roles; the organization model from the reference specification does not apply.
 - OAuth, social sign-in, third-party identity providers or public self-registration.
 - Password reset, email verification, multi-factor authentication or advanced account lifecycle workflows unless a later specification explicitly adds them.
 - Custom roles, granular permission editing or organization-specific permissions.
