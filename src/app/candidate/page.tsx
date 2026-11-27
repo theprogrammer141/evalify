@@ -1,25 +1,17 @@
 import { AppShell } from "@/components/app-shell";
+import { CandidateExaminationList } from "@/components/examinations/candidate-examination-list";
 import { requirePageRole } from "@/lib/auth/authorization";
+import { listCandidateExaminations } from "@/lib/examinations/service";
 
 export const instant = false;
 
 export default async function CandidatePage() {
   const user = await requirePageRole("CANDIDATE");
+  const examinations = await listCandidateExaminations(user.id);
 
   return (
     <AppShell user={user}>
-      <section className="py-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Candidate workspace
-        </p>
-        <h1 className="mt-3 font-heading text-4xl">Your examinations</h1>
-        <div className="mt-10 border border-border bg-background p-8 sm:p-10">
-          <p className="font-heading text-2xl">No examinations assigned</p>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-            Any examinations assigned to your account will appear here.
-          </p>
-        </div>
-      </section>
+      <CandidateExaminationList examinations={examinations} />
     </AppShell>
   );
 }

@@ -6,16 +6,26 @@ async function migrate() {
   loadEnvConfig(process.cwd());
   const { sql } = await import("@/lib/db");
   try {
-    const migrationPath = fileURLToPath(
-      new URL("../migrations/0001_identity.sql", import.meta.url),
+    const migrationFiles = [
+      "0001_identity.sql",
+      "0002_examinations.sql",
+    ] as const;
+    const migrations = await Promise.all(
+      migrationFiles.map((file) =>
+        readFile(
+          fileURLToPath(new URL(`../migrations/${file}`, import.meta.url)),
+          "utf8",
+        ),
+      ),
     );
-    const migration = await readFile(migrationPath, "utf8");
 
     await sql.begin(async (transaction) => {
-      await transaction.unsafe(migration).simple();
+      for (const migration of migrations) {
+        await transaction.unsafe(migration).simple();
+      }
     });
 
-    console.info("Identity schema is up to date.");
+    console.info("Database schema is up to date.");
   } finally {
     await sql.end();
   }

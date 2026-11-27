@@ -1,11 +1,21 @@
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import type { AuthenticatedUser } from "@/lib/auth/session";
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 const roleLabels = {
   ADMIN: "Administrator",
   EXAMINER: "Examiner",
   CANDIDATE: "Candidate",
+};
+
+const workspaceLinks = {
+  ADMIN: [{ href: "/admin", label: "User accounts" }],
+  EXAMINER: [
+    { href: "/examiner", label: "Examinations" },
+    { href: "/examiner/questions", label: "Question bank" },
+  ],
+  CANDIDATE: [{ href: "/candidate", label: "Your examinations" }],
 };
 
 export function AppShell({
@@ -15,16 +25,27 @@ export function AppShell({
   user: AuthenticatedUser;
   children: ReactNode;
 }) {
+  const homeHref =
+    user.role === "EXAMINER"
+      ? "/examiner"
+      : user.role === "CANDIDATE"
+        ? "/candidate"
+        : "/admin";
+
   return (
     <div className="min-h-screen flex-1 bg-muted/30">
       <header className="border-b border-border bg-background">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-8 gap-y-4 px-6 py-4">
           <div className="flex items-center gap-3">
-            <span className="grid size-9 place-items-center bg-[#182d2b] font-heading text-lg text-white">
+            <Link
+              aria-label="SEMS workspace home"
+              className="grid size-10 place-items-center bg-[#182d2b] font-heading text-lg text-white transition-transform hover:-translate-y-0.5"
+              href={homeHref}
+            >
               S
-            </span>
+            </Link>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em]">
+              <p className="text-xs font-semibold tracking-[0.16em]">
                 SEMS
               </p>
               <p className="text-xs text-muted-foreground">
@@ -32,15 +53,28 @@ export function AppShell({
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="hidden text-sm text-muted-foreground sm:inline">
-              {user.email}
-            </span>
-            <SignOutButton />
+          <div className="flex flex-1 items-center justify-end gap-6">
+            <nav aria-label="Workspace" className="flex items-center gap-5">
+              {workspaceLinks[user.role].map((link) => (
+                <Link
+                  className="min-h-11 content-center text-sm font-medium text-muted-foreground underline-offset-8 transition-colors hover:text-foreground hover:underline"
+                  href={link.href}
+                  key={link.href}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+            <div className="flex items-center gap-4 border-l border-border pl-4 sm:pl-6">
+              <span className="hidden max-w-52 truncate text-sm text-muted-foreground sm:inline">
+                {user.email}
+              </span>
+              <SignOutButton />
+            </div>
           </div>
         </div>
       </header>
-      <div className="mx-auto max-w-6xl px-6 py-12">{children}</div>
+      <div className="mx-auto max-w-7xl px-6 py-10 sm:py-14">{children}</div>
     </div>
   );
 }
