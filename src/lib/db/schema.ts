@@ -7,12 +7,20 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  text,
   timestamp,
-  uniqueIndex,
+  unique,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type {
+  AttemptAnswerValue,
+  AttemptSnapshot,
+  MarkingRules,
+  QuestionOption,
+  QuestionType,
+} from "@/lib/attempts/types";
 
 export const userRole = pgEnum("user_role", [
   "ADMIN",
@@ -83,6 +91,29 @@ export const sessions = pgTable("sessions", {
     .defaultNow(),
 });
 
+export const questionType = pgEnum("question_type", [
+  "SINGLE_CHOICE",
+  "MULTIPLE_SELECT",
+  "WRITTEN",
+]);
+
+export const examinationStatus = pgEnum("examination_status", [
+  "DRAFT",
+  "PUBLISHED",
+  "COMPLETED",
+]);
+
+export const enrollmentStatus = pgEnum("enrollment_status", [
+  "ENROLLED",
+  "WITHDRAWN",
+]);
+
+export const attemptStatus = pgEnum("attempt_status", [
+  "IN_PROGRESS",
+  "SUBMITTED",
+  "EXPIRED",
+]);
+
 export const examinations = pgTable(
   "examinations",
   {
@@ -90,35 +121,25 @@ export const examinations = pgTable(
     examinerId: uuid("examiner_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    title: varchar("title", { length: 180 }).notNull(),
-    instructions: varchar("instructions", { length: 8000 }).notNull(),
-    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
-    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    title: varchar("title", { length: 240 }).notNull(),
+    instructions: text("instructions").notNull().default(""),
+    status: examinationStatus("status").notNull().default("DRAFT"),
+    opensAt: timestamp("opens_at", { withTimezone: true }).notNull(),
+    closesAt: timestamp("closes_at", { withTimezone: true }).notNull(),
     durationMinutes: integer("duration_minutes").notNull(),
-    totalMarks: integer("total_marks").notNull().default(0),
     randomizeQuestions: boolean("randomize_questions").notNull().default(false),
     randomizeOptions: boolean("randomize_options").notNull().default(false),
-    status: examinationStatus("status").notNull().default("DRAFT"),
-    publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
   (table) => [
-    index("examinations_examiner_updated_idx").on(
-      table.examinerId,
-      table.updatedAt,
-    ),
-    check("examinations_duration_positive", sql`${table.durationMinutes} > 0`),
-    check("examinations_total_marks_nonnegative", sql`${table.totalMarks} >= 0`),
-    check("examinations_schedule_ordered", sql`${table.endsAt} > ${table.startsAt}`),
+    index("examinations_examiner_id_idx").on(table.examinerId),
     check(
-      "examinations_publication_consistent",
-      sql`(${table.status} = 'DRAFT' AND ${table.publishedAt} IS NULL) OR (${table.status} = 'PUBLISHED' AND ${table.publishedAt} IS NOT NULL)`,
+      "examinations_duration_positive",
+      sql`${table.durationMinutes} > 0`,
     ),
+    check("examinations_window_valid", sql`${table.closesAt} > ${table.opensAt}`),
   ],
 );
 
@@ -129,23 +150,29 @@ export const questions = pgTable(
     examinerId: uuid("examiner_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    prompt: varchar("prompt", { length: 8000 }).notNull(),
-    category: varchar("category", { length: 120 }).notNull(),
-    difficulty: questionDifficulty("difficulty").notNull(),
     type: questionType("type").notNull(),
-    marks: integer("marks").notNull(),
+    prompt: text("prompt").notNull(),
     options: jsonb("options").$type<QuestionOption[]>().notNull().default([]),
-    answerKey: jsonb("answer_key").$type<string[]>().notNull().default([]),
-    createdAt: timestamp("created_at", { withTimezone: true })
+    marks: integer("marks").notNull(),
+    markingRules: jsonb("marking_rules")
+      .$type<MarkingRules>()
       .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
   (table) => [
-    index("questions_examiner_updated_idx").on(table.examinerId, table.updatedAt),
+    index("questions_examiner_id_idx").on(table.examinerId),
     check("questions_marks_positive", sql`${table.marks} > 0`),
+    check(
+      "questions_options_array",
+      sql`jsonb_typeof(${table.options}) = 'array'`,
+    ),
+    check(
+      "questions_marking_rules_object",
+      sql`jsonb_typeof(${table.markingRules}) = 'object'`,
+    ),
   ],
 );
 
@@ -156,43 +183,31 @@ export const examinationQuestions = pgTable(
     examinationId: uuid("examination_id")
       .notNull()
       .references(() => examinations.id, { onDelete: "cascade" }),
-    sourceQuestionId: uuid("source_question_id").references(() => questions.id, {
+    questionId: uuid("question_id").references(() => questions.id, {
       onDelete: "set null",
     }),
     position: integer("position").notNull(),
-    prompt: varchar("prompt", { length: 8000 }).notNull(),
-    category: varchar("category", { length: 120 }).notNull(),
-    difficulty: questionDifficulty("difficulty").notNull(),
-    type: questionType("type").notNull(),
     marks: integer("marks").notNull(),
-    options: jsonb("options").$type<QuestionOption[]>().notNull().default([]),
-    answerKey: jsonb("answer_key").$type<string[]>().notNull().default([]),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
   },
   (table) => [
-    uniqueIndex("examination_questions_position_unique").on(
+    unique("examination_questions_position_unique").on(
       table.examinationId,
       table.position,
     ),
-    uniqueIndex("examination_questions_source_unique")
-      .on(table.examinationId, table.sourceQuestionId)
-      .where(sql`${table.sourceQuestionId} IS NOT NULL`),
-    index("examination_questions_examination_idx").on(
+    unique("examination_questions_question_unique").on(
       table.examinationId,
-      table.position,
+      table.questionId,
     ),
-    check("examination_questions_position_positive", sql`${table.position} > 0`),
+    check(
+      "examination_questions_position_nonnegative",
+      sql`${table.position} >= 0`,
+    ),
     check("examination_questions_marks_positive", sql`${table.marks} > 0`),
   ],
 );
 
-export const examinationEnrollments = pgTable(
-  "examination_enrollments",
+export const enrollments = pgTable(
+  "enrollments",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     examinationId: uuid("examination_id")
@@ -200,22 +215,25 @@ export const examinationEnrollments = pgTable(
       .references(() => examinations.id, { onDelete: "cascade" }),
     candidateId: uuid("candidate_id")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    enrolledAt: timestamp("enrolled_at", { withTimezone: true })
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: enrollmentStatus("status").notNull().default("ENROLLED"),
+    createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("examination_enrollments_candidate_unique").on(
+    unique("enrollments_examination_candidate_unique").on(
       table.examinationId,
       table.candidateId,
     ),
-    index("examination_enrollments_candidate_idx").on(table.candidateId),
+    index("enrollments_candidate_id_idx").on(table.candidateId),
   ],
 );
 
 export const examinationAttempts = pgTable(
   "examination_attempts",
+export const attempts = pgTable(
+  "attempts",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     examinationId: uuid("examination_id")
@@ -229,6 +247,15 @@ export const examinationAttempts = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+      .references(() => examinations.id, { onDelete: "restrict" }),
+    candidateId: uuid("candidate_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: attemptStatus("status").notNull().default("IN_PROGRESS"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+    snapshot: jsonb("snapshot").$type<AttemptSnapshot>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -301,6 +328,31 @@ export type AttemptResponse =
   | { type: "options"; optionIds: string[] }
   | { type: "text"; text: string };
 
+    unique("attempts_examination_candidate_unique").on(
+      table.examinationId,
+      table.candidateId,
+    ),
+    index("attempts_candidate_id_idx").on(table.candidateId),
+    index("attempts_examination_id_idx").on(table.examinationId),
+    index("attempts_status_expires_at_idx").on(
+      table.status,
+      table.expiresAt,
+    ),
+    check("attempts_deadline_valid", sql`${table.expiresAt} > ${table.startedAt}`),
+    check(
+      "attempts_snapshot_object",
+      sql`jsonb_typeof(${table.snapshot}) = 'object'`,
+    ),
+    check(
+      "attempts_finalization_consistent",
+      sql`(
+        (${table.status} = 'IN_PROGRESS' and ${table.finalizedAt} is null) or
+        (${table.status} in ('SUBMITTED', 'EXPIRED') and ${table.finalizedAt} is not null)
+      )`,
+    ),
+  ],
+);
+
 export const attemptAnswers = pgTable(
   "attempt_answers",
   {
@@ -311,6 +363,11 @@ export const attemptAnswers = pgTable(
     questionId: uuid("question_id").notNull(),
     response: jsonb("response").$type<AttemptResponse>().notNull(),
     markedForReview: boolean("marked_for_review").notNull().default(false),
+      .references(() => attempts.id, { onDelete: "cascade" }),
+    snapshotQuestionId: uuid("snapshot_question_id").notNull(),
+    answer: jsonb("answer").$type<AttemptAnswerValue | null>(),
+    markedForReview: boolean("marked_for_review").notNull().default(false),
+    revision: integer("revision").notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -409,3 +466,42 @@ export const announcementReads = pgTable(
     ),
   ],
 );
+    unique("attempt_answers_attempt_question_unique").on(
+      table.attemptId,
+      table.snapshotQuestionId,
+    ),
+    index("attempt_answers_attempt_id_idx").on(table.attemptId),
+    check(
+      "attempt_answers_revision_nonnegative",
+      sql`${table.revision} >= 0`,
+    ),
+    check(
+      "attempt_answers_shape_valid",
+      sql`${table.answer} is null or (
+        jsonb_typeof(${table.answer}) = 'object' and (
+          (
+            ${table.answer}->>'kind' = 'single'
+            and jsonb_object_length(${table.answer}) = 2
+            and jsonb_typeof(${table.answer}->'optionId') = 'string'
+            and (${table.answer}->>'optionId') <> ''
+          ) or (
+            ${table.answer}->>'kind' = 'multiple'
+            and jsonb_object_length(${table.answer}) = 2
+            and jsonb_typeof(${table.answer}->'optionIds') = 'array'
+            and not jsonb_path_exists(
+              ${table.answer},
+              '$.optionIds[*] ? (@.type() != "string")'
+            )
+          ) or (
+            ${table.answer}->>'kind' = 'written'
+            and jsonb_object_length(${table.answer}) = 2
+            and jsonb_typeof(${table.answer}->'text') = 'string'
+          )
+        )
+      )`,
+    ),
+  ],
+);
+
+export type UserRole = (typeof userRole.enumValues)[number];
+export type DbQuestionType = QuestionType;

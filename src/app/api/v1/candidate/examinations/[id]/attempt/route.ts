@@ -8,6 +8,15 @@ import {
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, { params }: RouteContext) {
+import { z } from "zod";
+import { authorizeApi } from "@/lib/auth/authorization";
+import { attemptErrorResponse, invalidRequestResponse } from "@/lib/attempts/http";
+import { startCandidateAttempt } from "@/lib/attempts/service";
+
+export async function POST(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authorization = await authorizeApi("CANDIDATE");
   if (!authorization.authorized) return authorization.response;
 
@@ -44,4 +53,22 @@ export async function POST(_request: Request, { params }: RouteContext) {
     { attempt },
     { status: result.status === "started" ? 201 : 200 },
   );
+  if (!z.uuid().safeParse(id).success) {
+    return invalidRequestResponse();
+  }
+
+  try {
+    const attempt = await startCandidateAttempt(
+      authorization.user.id,
+      id,
+    );
+    return NextResponse.json(
+      { attempt },
+      {
+        headers: { "Cache-Control": "no-store" },
+      },
+    );
+  } catch (error) {
+    return attemptErrorResponse(error);
+  }
 }

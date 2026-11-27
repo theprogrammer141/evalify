@@ -1,5 +1,6 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { loadEnvConfig } from "@next/env";
 
 async function migrate() {
@@ -18,15 +19,22 @@ async function migrate() {
           "utf8",
         ),
       ),
+    const migrationsPath = fileURLToPath(
+      new URL("../migrations/", import.meta.url),
     );
+    const migrationFiles = (await readdir(migrationsPath))
+      .filter((file) => /^\d+_[\w-]+\.sql$/.test(file))
+      .sort();
 
-    await sql.begin(async (transaction) => {
-      for (const migration of migrations) {
+    for (const file of migrationFiles) {
+      const migration = await readFile(join(migrationsPath, file), "utf8");
+      await sql.begin(async (transaction) => {
         await transaction.unsafe(migration).simple();
-      }
-    });
+      });
+      console.info(`Applied ${file}.`);
+    }
 
-    console.info("Database schema is up to date.");
+    console.info("Database migrations are up to date.");
   } finally {
     await sql.end();
   }
