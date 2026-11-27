@@ -202,12 +202,14 @@ export function getPublicationIssues(
 }
 
 export function getAvailabilityState(
-  status: "DRAFT" | "PUBLISHED",
+  status: "DRAFT" | "PUBLISHED" | "COMPLETED",
   startsAt: Date,
   endsAt: Date,
   now: Date,
 ): "draft" | "upcoming" | "ongoing" | "completed" {
-  if (status === "DRAFT") return "draft";
+  if (status !== "PUBLISHED") {
+    return status === "COMPLETED" ? "completed" : "draft";
+  }
   if (endsAt <= now) return "completed";
   if (!isWithinAvailabilityWindow(startsAt, endsAt, now)) return "upcoming";
   return "ongoing";

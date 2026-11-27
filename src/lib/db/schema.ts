@@ -17,8 +17,6 @@ import type {
   AttemptAnswerValue,
   AttemptSnapshot,
   MarkingRules,
-  QuestionOption,
-  QuestionType,
 } from "@/lib/attempts/types";
 
 export const userRole = pgEnum("user_role", [
@@ -30,12 +28,14 @@ export const userRole = pgEnum("user_role", [
 export const examinationStatus = pgEnum("examination_status", [
   "DRAFT",
   "PUBLISHED",
+  "COMPLETED",
 ]);
 
 export const questionType = pgEnum("question_type", [
   "SINGLE_CHOICE",
   "MULTIPLE_SELECT",
   "WRITTEN_RESPONSE",
+  "WRITTEN",
 ]);
 
 export const questionDifficulty = pgEnum("question_difficulty", [
@@ -74,18 +74,6 @@ export const sessions = pgTable("sessions", {
     .defaultNow(),
 });
 
-export const questionType = pgEnum("question_type", [
-  "SINGLE_CHOICE",
-  "MULTIPLE_SELECT",
-  "WRITTEN",
-]);
-
-export const examinationStatus = pgEnum("examination_status", [
-  "DRAFT",
-  "PUBLISHED",
-  "COMPLETED",
-]);
-
 export const enrollmentStatus = pgEnum("enrollment_status", [
   "ENROLLED",
   "WITHDRAWN",
@@ -107,12 +95,17 @@ export const examinations = pgTable(
     title: varchar("title", { length: 240 }).notNull(),
     instructions: text("instructions").notNull().default(""),
     status: examinationStatus("status").notNull().default("DRAFT"),
+    totalMarks: integer("total_marks").notNull().default(0),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
     opensAt: timestamp("opens_at", { withTimezone: true }).notNull(),
     closesAt: timestamp("closes_at", { withTimezone: true }).notNull(),
     durationMinutes: integer("duration_minutes").notNull(),
     randomizeQuestions: boolean("randomize_questions").notNull().default(false),
     randomizeOptions: boolean("randomize_options").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
@@ -135,6 +128,8 @@ export const questions = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     type: questionType("type").notNull(),
     prompt: text("prompt").notNull(),
+    category: varchar("category", { length: 120 }).notNull().default(""),
+    difficulty: questionDifficulty("difficulty").notNull().default("MEDIUM"),
     options: jsonb("options").$type<QuestionOption[]>().notNull().default([]),
     marks: integer("marks").notNull(),
     markingRules: jsonb("marking_rules")
@@ -142,6 +137,9 @@ export const questions = pgTable(
       .notNull()
       .default({}),
     createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
@@ -200,7 +198,7 @@ export const enrollments = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     status: enrollmentStatus("status").notNull().default("ENROLLED"),
-    createdAt: timestamp("created_at", { withTimezone: true })
+    enrolledAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
@@ -212,6 +210,8 @@ export const enrollments = pgTable(
     index("enrollments_candidate_id_idx").on(table.candidateId),
   ],
 );
+
+export const examinationEnrollments = enrollments;
 
 export const attempts = pgTable(
   "attempts",
@@ -289,12 +289,12 @@ export const attemptAnswers = pgTable(
         jsonb_typeof(${table.answer}) = 'object' and (
           (
             ${table.answer}->>'kind' = 'single'
-            and jsonb_object_length(${table.answer}) = 2
+            and (${table.answer} - 'kind' - 'optionId') = '{}'::jsonb
             and jsonb_typeof(${table.answer}->'optionId') = 'string'
             and (${table.answer}->>'optionId') <> ''
           ) or (
             ${table.answer}->>'kind' = 'multiple'
-            and jsonb_object_length(${table.answer}) = 2
+            and (${table.answer} - 'kind' - 'optionIds') = '{}'::jsonb
             and jsonb_typeof(${table.answer}->'optionIds') = 'array'
             and not jsonb_path_exists(
               ${table.answer},
@@ -302,7 +302,7 @@ export const attemptAnswers = pgTable(
             )
           ) or (
             ${table.answer}->>'kind' = 'written'
-            and jsonb_object_length(${table.answer}) = 2
+            and (${table.answer} - 'kind' - 'text') = '{}'::jsonb
             and jsonb_typeof(${table.answer}->'text') = 'string'
           )
         )
@@ -311,5 +311,4 @@ export const attemptAnswers = pgTable(
   ],
 );
 
-export type UserRole = (typeof userRole.enumValues)[number];
 export type DbQuestionType = QuestionType;

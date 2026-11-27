@@ -20,7 +20,7 @@ type ExamSettings = {
   durationMinutes: number;
   randomizeQuestions: boolean;
   randomizeOptions: boolean;
-  status: "DRAFT" | "PUBLISHED";
+  status: "DRAFT" | "PUBLISHED" | "COMPLETED";
 };
 
 type QuestionOption = { id: string; text: string };

@@ -17,6 +17,7 @@ import {
   questions,
   users,
 } from "@/lib/db/schema";
+import type { DbQuestionType } from "@/lib/db/schema";
 import {
   attemptSnapshotSchema,
   isValidAnswerForQuestion,
@@ -205,14 +206,17 @@ async function getAnswers(
 
 function makeSnapshotQuestion(input: {
   id: string;
-  type: AttemptSnapshotQuestion["type"];
+  type: DbQuestionType;
   prompt: string;
   marks: number;
   position: number;
   options: QuestionOption[];
   markingRules: Record<string, unknown>;
 }): AttemptSnapshotQuestion {
-  return input;
+  return {
+    ...input,
+    type: input.type === "WRITTEN_RESPONSE" ? "WRITTEN" : input.type,
+  };
 }
 
 export async function listCandidateExaminations(candidateId: string) {

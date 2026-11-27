@@ -149,6 +149,10 @@ test("availability is derived from server time and published status", () => {
     getAvailabilityState("PUBLISHED", start, end, end),
     "completed",
   );
+  assert.equal(
+    getAvailabilityState("COMPLETED", start, end, new Date("2026-12-31T23:00:00Z")),
+    "completed",
+  );
 });
 
 test("candidate availability opens at the start and closes at the end", () => {

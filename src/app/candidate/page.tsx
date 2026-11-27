@@ -2,7 +2,6 @@ import { AppShell } from "@/components/app-shell";
 import { ExaminationList } from "@/components/candidate/examination-list";
 import { listCandidateExaminations } from "@/lib/attempts/service";
 import { requirePageRole } from "@/lib/auth/authorization";
-import { listCandidateExaminations } from "@/lib/examinations/service";
 
 export const instant = false;
 

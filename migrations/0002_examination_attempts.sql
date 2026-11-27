@@ -5,6 +5,7 @@ EXCEPTION
   WHEN duplicate_object THEN NULL;
 END
 $$;
+ALTER TYPE question_type ADD VALUE IF NOT EXISTS 'WRITTEN_RESPONSE';
 
 DO $$
 BEGIN
@@ -13,6 +14,7 @@ EXCEPTION
   WHEN duplicate_object THEN NULL;
 END
 $$;
+ALTER TYPE examination_status ADD VALUE IF NOT EXISTS 'COMPLETED';
 
 DO $$
 BEGIN
@@ -30,20 +32,35 @@ EXCEPTION
 END
 $$;
 
+DO $$
+BEGIN
+  CREATE TYPE question_difficulty AS ENUM ('EASY', 'MEDIUM', 'HARD');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END
+$$;
+
 CREATE TABLE IF NOT EXISTS examinations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   examiner_id uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   title varchar(240) NOT NULL,
   instructions text NOT NULL DEFAULT '',
   status examination_status NOT NULL DEFAULT 'DRAFT',
+  total_marks integer NOT NULL DEFAULT 0,
+  published_at timestamptz,
   opens_at timestamptz NOT NULL,
   closes_at timestamptz NOT NULL,
   duration_minutes integer NOT NULL CHECK (duration_minutes > 0),
   randomize_questions boolean NOT NULL DEFAULT false,
   randomize_options boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT examinations_window_valid CHECK (closes_at > opens_at)
 );
+ALTER TABLE examinations
+  ADD COLUMN IF NOT EXISTS total_marks integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS published_at timestamptz,
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
 CREATE INDEX IF NOT EXISTS examinations_examiner_id_idx
   ON examinations(examiner_id);
@@ -53,13 +70,20 @@ CREATE TABLE IF NOT EXISTS questions (
   examiner_id uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   type question_type NOT NULL,
   prompt text NOT NULL,
+  category varchar(120) NOT NULL DEFAULT '',
+  difficulty question_difficulty NOT NULL DEFAULT 'MEDIUM',
   options jsonb NOT NULL DEFAULT '[]'::jsonb
     CHECK (jsonb_typeof(options) = 'array'),
   marks integer NOT NULL CHECK (marks > 0),
   marking_rules jsonb NOT NULL DEFAULT '{}'::jsonb
     CHECK (jsonb_typeof(marking_rules) = 'object'),
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE questions
+  ADD COLUMN IF NOT EXISTS category varchar(120) NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS difficulty question_difficulty NOT NULL DEFAULT 'MEDIUM',
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
 CREATE INDEX IF NOT EXISTS questions_examiner_id_idx
   ON questions(examiner_id);
@@ -129,12 +153,12 @@ CREATE TABLE IF NOT EXISTS attempt_answers (
       jsonb_typeof(answer) = 'object' AND (
         (
           answer->>'kind' = 'single'
-          AND jsonb_object_length(answer) = 2
+          AND answer - 'kind' - 'optionId' = '{}'::jsonb
           AND jsonb_typeof(answer->'optionId') = 'string'
           AND answer->>'optionId' <> ''
         ) OR (
           answer->>'kind' = 'multiple'
-          AND jsonb_object_length(answer) = 2
+          AND answer - 'kind' - 'optionIds' = '{}'::jsonb
           AND jsonb_typeof(answer->'optionIds') = 'array'
           AND NOT jsonb_path_exists(
             answer,
@@ -142,7 +166,7 @@ CREATE TABLE IF NOT EXISTS attempt_answers (
           )
         ) OR (
           answer->>'kind' = 'written'
-          AND jsonb_object_length(answer) = 2
+          AND answer - 'kind' - 'text' = '{}'::jsonb
           AND jsonb_typeof(answer->'text') = 'string'
         )
       )

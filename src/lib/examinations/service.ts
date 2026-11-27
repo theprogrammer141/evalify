@@ -26,14 +26,48 @@ import {
 
 type AvailabilityState = ReturnType<typeof getAvailabilityState>;
 
+function toBankQuestion<T extends {
+  type: typeof questions.$inferSelect.type;
+  markingRules: typeof questions.$inferSelect.markingRules;
+}>(question: T) {
+  const answerKey =
+    question.type === "SINGLE_CHOICE" &&
+    typeof question.markingRules.correctOptionId === "string"
+      ? [question.markingRules.correctOptionId]
+      : question.type === "MULTIPLE_SELECT" &&
+          Array.isArray(question.markingRules.correctOptionIds)
+        ? question.markingRules.correctOptionIds.filter(
+            (id): id is string => typeof id === "string",
+          )
+        : [];
+
+  return {
+    ...question,
+    type: question.type === "WRITTEN" ? "WRITTEN_RESPONSE" : question.type,
+    answerKey,
+  };
+}
+
+function questionInputValues(input: QuestionInput) {
+  const { answerKey, ...question } = input;
+  const markingRules =
+    input.type === "SINGLE_CHOICE"
+      ? { correctOptionId: answerKey[0] }
+      : input.type === "MULTIPLE_SELECT"
+        ? { correctOptionIds: answerKey }
+        : {};
+  return { ...question, markingRules };
+}
+
 function examinationState(
   examination: typeof examinations.$inferSelect,
   now: Date,
 ): AvailabilityState {
+  if (examination.status === "COMPLETED") return "completed";
   return getAvailabilityState(
     examination.status,
-    examination.startsAt,
-    examination.endsAt,
+    examination.opensAt,
+    examination.closesAt,
     now,
   );
 }
@@ -79,6 +113,8 @@ export async function listExaminations(examinerId: string) {
     );
     return {
       ...row,
+      startsAt: row.opensAt,
+      endsAt: row.closesAt,
       availability: examinationState(row, now),
       questionCount: examQuestions.length,
       candidateCount: enrollments.filter(
@@ -108,8 +144,26 @@ export async function getExaminerExamination(
 
   const [assignedQuestions, enrolledCandidates] = await Promise.all([
     db
-      .select()
+      .select({
+        id: examinationQuestions.id,
+        sourceQuestionId: examinationQuestions.questionId,
+        position: examinationQuestions.position,
+        marks: examinationQuestions.marks,
+        prompt: questions.prompt,
+        category: questions.category,
+        difficulty: questions.difficulty,
+        type: questions.type,
+        options: questions.options,
+        markingRules: questions.markingRules,
+        examinerId: questions.examinerId,
+        createdAt: questions.createdAt,
+        updatedAt: questions.updatedAt,
+      })
       .from(examinationQuestions)
+      .innerJoin(
+        questions,
+        eq(examinationQuestions.questionId, questions.id),
+      )
       .where(eq(examinationQuestions.examinationId, examinationId))
       .orderBy(asc(examinationQuestions.position)),
     db
@@ -128,7 +182,15 @@ export async function getExaminerExamination(
   return {
     ...examination,
     availability: examinationState(examination, now),
-    questions: assignedQuestions,
+    startsAt: examination.opensAt,
+    endsAt: examination.closesAt,
+    questions: assignedQuestions.map((question) => ({
+      ...toBankQuestion(question),
+      id: question.id,
+      sourceQuestionId: question.sourceQuestionId,
+      position: question.position,
+      marks: question.marks,
+    })),
     candidates: enrolledCandidates,
     questionCount: assignedQuestions.length,
     candidateCount: enrolledCandidates.length,
@@ -146,8 +208,8 @@ export async function createExamination(
       examinerId,
       title: input.title,
       instructions: input.instructions,
-      startsAt: new Date(input.startsAt),
-      endsAt: new Date(input.endsAt),
+      opensAt: new Date(input.startsAt),
+      closesAt: new Date(input.endsAt),
       durationMinutes: input.durationMinutes,
       randomizeQuestions: input.randomizeQuestions,
       randomizeOptions: input.randomizeOptions,
@@ -176,14 +238,14 @@ export async function updateExamination(
       .limit(1);
 
     if (!current) return { status: "not_found" as const };
-    if (current.endsAt <= new Date())
+    if (current.closesAt <= new Date())
       return { status: "completed" as const };
 
     const merged = examinationSchema.safeParse({
       title: input.title ?? current.title,
       instructions: input.instructions ?? current.instructions,
-      startsAt: input.startsAt ?? current.startsAt.toISOString(),
-      endsAt: input.endsAt ?? current.endsAt.toISOString(),
+      startsAt: input.startsAt ?? current.opensAt.toISOString(),
+      endsAt: input.endsAt ?? current.closesAt.toISOString(),
       durationMinutes: input.durationMinutes ?? current.durationMinutes,
       randomizeQuestions:
         input.randomizeQuestions ?? current.randomizeQuestions,
@@ -201,8 +263,8 @@ export async function updateExamination(
       .update(examinations)
       .set({
         ...merged.data,
-        startsAt: new Date(merged.data.startsAt),
-        endsAt: new Date(merged.data.endsAt),
+        opensAt: new Date(merged.data.startsAt),
+        closesAt: new Date(merged.data.endsAt),
         updatedAt: new Date(),
       })
       .where(eq(examinations.id, examinationId))
@@ -248,8 +310,8 @@ export async function publishExamination(
       {
         title: examination.title,
         instructions: examination.instructions,
-        startsAt: examination.startsAt,
-        endsAt: examination.endsAt,
+        startsAt: examination.opensAt,
+        endsAt: examination.closesAt,
         durationMinutes: examination.durationMinutes,
         questionCount: assignedQuestions.length,
         candidateCount: enrolledCandidates.length,
@@ -273,11 +335,12 @@ export async function publishExamination(
 }
 
 export async function listQuestionBank(examinerId: string) {
-  return db
+  const records = await db
     .select()
     .from(questions)
     .where(eq(questions.examinerId, examinerId))
     .orderBy(asc(questions.category), desc(questions.updatedAt));
+  return records.map(toBankQuestion);
 }
 
 export async function createBankQuestion(
@@ -286,9 +349,9 @@ export async function createBankQuestion(
 ) {
   const [created] = await db
     .insert(questions)
-    .values({ ...input, examinerId })
+    .values({ ...questionInputValues(input), examinerId })
     .returning();
-  return created;
+  return toBankQuestion(created);
 }
 
 export async function updateBankQuestion(
@@ -298,7 +361,7 @@ export async function updateBankQuestion(
 ) {
   const [updated] = await db
     .update(questions)
-    .set({ ...input, updatedAt: new Date() })
+    .set({ ...questionInputValues(input), updatedAt: new Date() })
     .where(
       and(
         eq(questions.id, questionId),
@@ -306,7 +369,7 @@ export async function updateBankQuestion(
       ),
     )
     .returning();
-  return updated ?? null;
+  return updated ? toBankQuestion(updated) : null;
 }
 
 export async function addQuestionToExamination(
@@ -319,7 +382,7 @@ export async function addQuestionToExamination(
     const [examination] = await transaction
       .select({
         id: examinations.id,
-        endsAt: examinations.endsAt,
+        endsAt: examinations.closesAt,
       })
       .from(examinations)
       .where(
@@ -354,7 +417,7 @@ export async function addQuestionToExamination(
       .where(
         and(
           eq(examinationQuestions.examinationId, examinationId),
-          eq(examinationQuestions.sourceQuestionId, questionId),
+          eq(examinationQuestions.questionId, questionId),
         ),
       )
       .limit(1);
@@ -371,15 +434,9 @@ export async function addQuestionToExamination(
       .insert(examinationQuestions)
       .values({
         examinationId,
-        sourceQuestionId: question.id,
+        questionId: question.id,
         position,
-        prompt: question.prompt,
-        category: question.category,
-        difficulty: question.difficulty,
-        type: question.type,
         marks: marks ?? question.marks,
-        options: question.options,
-        answerKey: question.answerKey,
       })
       .returning();
 
@@ -409,7 +466,7 @@ export async function updateExaminationQuestions(
     const [examination] = await transaction
       .select({
         id: examinations.id,
-        endsAt: examinations.endsAt,
+        endsAt: examinations.closesAt,
       })
       .from(examinations)
       .where(
@@ -451,7 +508,6 @@ export async function updateExaminationQuestions(
         .update(examinationQuestions)
         .set({
           position: temporaryStart + index,
-          updatedAt: new Date(),
         })
         .where(
           and(
@@ -464,7 +520,7 @@ export async function updateExaminationQuestions(
     for (const [index, item] of items.entries()) {
       await transaction
         .update(examinationQuestions)
-        .set({ position: index + 1, marks: item.marks, updatedAt: new Date() })
+        .set({ position: index + 1, marks: item.marks })
         .where(
           and(
             eq(examinationQuestions.id, item.id),
@@ -498,7 +554,7 @@ export async function removeQuestionFromExamination(
     const [examination] = await transaction
       .select({
         id: examinations.id,
-        endsAt: examinations.endsAt,
+        endsAt: examinations.closesAt,
         status: examinations.status,
       })
       .from(examinations)
@@ -593,7 +649,7 @@ export async function enrollCandidate(
 ) {
   return db.transaction(async (transaction) => {
     const [examination] = await transaction
-      .select({ id: examinations.id, endsAt: examinations.endsAt })
+      .select({ id: examinations.id, endsAt: examinations.closesAt })
       .from(examinations)
       .where(
         and(
@@ -641,7 +697,7 @@ export async function removeCandidateEnrollment(
     const [examination] = await transaction
       .select({
         id: examinations.id,
-        endsAt: examinations.endsAt,
+        endsAt: examinations.closesAt,
         status: examinations.status,
       })
       .from(examinations)
@@ -698,7 +754,7 @@ export async function listCandidateExaminations(candidateId: string) {
         eq(examinations.status, "PUBLISHED"),
       ),
     )
-    .orderBy(asc(examinations.startsAt));
+    .orderBy(asc(examinations.opensAt));
 
   if (records.length === 0) return [];
 
@@ -720,14 +776,14 @@ export async function listCandidateExaminations(candidateId: string) {
       id: examination.id,
       title: examination.title,
       instructions: examination.instructions,
-      startsAt: examination.startsAt,
-      endsAt: examination.endsAt,
+      startsAt: examination.opensAt,
+      endsAt: examination.closesAt,
       durationMinutes: examination.durationMinutes,
       publishedAt: examination.publishedAt,
       enrolledAt,
       availability: publishedAvailability(
-        examination.startsAt,
-        examination.endsAt,
+        examination.opensAt,
+        examination.closesAt,
         now,
       ),
       questionCount: examQuestions.length,
@@ -764,8 +820,8 @@ export async function getCandidateExamination(
   const { examination, enrolledAt } = record;
   const now = new Date();
   const availability = publishedAvailability(
-    examination.startsAt,
-    examination.endsAt,
+    examination.opensAt,
+    examination.closesAt,
     now,
   );
   if (availability !== "ongoing") return null;
@@ -779,8 +835,8 @@ export async function getCandidateExamination(
     id: examination.id,
     title: examination.title,
     instructions: examination.instructions,
-    startsAt: examination.startsAt,
-    endsAt: examination.endsAt,
+    startsAt: examination.opensAt,
+    endsAt: examination.closesAt,
     durationMinutes: examination.durationMinutes,
     publishedAt: examination.publishedAt,
     enrolledAt,

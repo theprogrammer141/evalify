@@ -17,6 +17,7 @@ EXCEPTION
   WHEN duplicate_object THEN NULL;
 END
 $$;
+ALTER TYPE question_type ADD VALUE IF NOT EXISTS 'WRITTEN';
 
 DO $$
 BEGIN
@@ -86,9 +87,23 @@ CREATE TABLE IF NOT EXISTS examination_questions (
 
 CREATE UNIQUE INDEX IF NOT EXISTS examination_questions_position_unique
   ON examination_questions(examination_id, position);
-CREATE UNIQUE INDEX IF NOT EXISTS examination_questions_source_unique
-  ON examination_questions(examination_id, source_question_id)
-  WHERE source_question_id IS NOT NULL;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'examination_questions'
+      AND column_name = 'source_question_id'
+  ) THEN
+    EXECUTE '
+      CREATE UNIQUE INDEX IF NOT EXISTS examination_questions_source_unique
+      ON examination_questions(examination_id, source_question_id)
+      WHERE source_question_id IS NOT NULL
+    ';
+  END IF;
+END
+$$;
 CREATE INDEX IF NOT EXISTS examination_questions_examination_idx
   ON examination_questions(examination_id, position);
 
