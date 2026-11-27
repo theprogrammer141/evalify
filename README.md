@@ -44,8 +44,16 @@ on candidate access and answer/submission requests.
 - `npm run start` — serve the production build.
 - `npm run lint` — run ESLint on application and configuration code.
 - `npm test` — run focused authentication and attempt-validation tests.
+- `npx playwright install chromium` — install the browser used by end-to-end tests.
+- `npm run test:e2e` — start the local app and run Chromium end-to-end tests.
+- `PLAYWRIGHT_BASE_URL=http://127.0.0.1:3000 npm run test:e2e` — run against an already-running local app instead.
 - `npm run db:migrate` — apply all idempotent database migrations in order.
 - `npm run db:bootstrap-admin` — create the configured initial administrator.
+
+The Phase 5 Playwright acceptance test uses `DATABASE_URL` to seed unique
+candidate accounts, examinations and questions, then removes those records
+after the test. Point it at a migrated, disposable PostgreSQL database only;
+an interrupted test process can prevent its cleanup from running.
 
 Phase 2 adds examination setup, question-bank management, enrollment and
 candidate-facing examination listings. Phase 4 adds the minimum attempt

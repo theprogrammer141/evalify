@@ -39,6 +39,7 @@ export type CandidateQuestion = Omit<
 
 export type CandidateAttempt = {
   id: string;
+  examinationId: string;
   status: "IN_PROGRESS" | "SUBMITTED" | "EXPIRED";
   examTitle: string;
   instructions: string;

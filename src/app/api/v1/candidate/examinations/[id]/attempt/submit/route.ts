@@ -1,24 +1,44 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { authorizeApi } from "@/lib/auth/authorization";
-import { submitCandidateAttempt } from "@/lib/monitoring/service";
+import {
+  attemptErrorResponse,
+  invalidRequestResponse,
+} from "@/lib/attempts/http";
+import {
+  finalizeCandidateAttempt,
+  getCandidateAttemptForExamination,
+} from "@/lib/attempts/service";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(_request: Request, { params }: RouteContext) {
+  const receivedAt = new Date();
   const authorization = await authorizeApi("CANDIDATE");
   if (!authorization.authorized) return authorization.response;
 
   const { id } = await params;
-  const result = await submitCandidateAttempt(authorization.user.id, id);
-  if (result.status === "not_found") {
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
-  }
-  if (result.status === "expired") {
-    return NextResponse.json({ status: "EXPIRED" }, { status: 409 });
-  }
-  if (result.status === "finalized") {
-    return NextResponse.json({ status: result.attempt.status }, { status: 409 });
-  }
+  if (!z.uuid().safeParse(id).success) return invalidRequestResponse();
 
-  return NextResponse.json({ status: "SUBMITTED", submittedAt: result.attempt.submittedAt });
+  try {
+    const attempt = await getCandidateAttemptForExamination(
+      authorization.user.id,
+      id,
+    );
+    if (!attempt) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+    return NextResponse.json(
+      {
+        attempt: await finalizeCandidateAttempt({
+          candidateId: authorization.user.id,
+          attemptId: attempt.id,
+          receivedAt,
+        }),
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    return attemptErrorResponse(error);
+  }
 }

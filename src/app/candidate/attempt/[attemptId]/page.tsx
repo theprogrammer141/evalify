@@ -32,7 +32,7 @@ export default async function CandidateAttemptPage({
 
   return (
     <AppShell user={user}>
-      <AttemptWorkspace initialAttempt={attempt} />
+      <AttemptWorkspace candidateId={user.id} initialAttempt={attempt} />
     </AppShell>
   );
 }

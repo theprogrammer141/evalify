@@ -2,9 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authorizeApi } from "@/lib/auth/authorization";
 import {
-  getCandidateAttempt,
+  attemptErrorResponse,
+  invalidRequestResponse,
+} from "@/lib/attempts/http";
+import {
   startCandidateAttempt,
-} from "@/lib/monitoring/service";
+  getCandidateAttemptForExamination,
+} from "@/lib/attempts/service";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -13,19 +17,26 @@ export async function GET(_request: Request, { params }: RouteContext) {
   if (!authorization.authorized) return authorization.response;
 
   const { id } = await params;
-  if (!z.uuid().safeParse(id).success) {
-    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
-  }
+  if (!z.uuid().safeParse(id).success) return invalidRequestResponse();
 
-  const attempt = await getCandidateAttempt(authorization.user.id, id);
-  if (!attempt) {
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  try {
+    const attempt = await getCandidateAttemptForExamination(
+      authorization.user.id,
+      id,
+    );
+    if (!attempt) {
+      return NextResponse.json(
+        { error: "not_found" },
+        { status: 404, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    return NextResponse.json(
+      { attempt },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    return attemptErrorResponse(error);
   }
-
-  return NextResponse.json(
-    { attempt },
-    { headers: { "Cache-Control": "no-store" } },
-  );
 }
 
 export async function POST(_request: Request, { params }: RouteContext) {
@@ -33,27 +44,17 @@ export async function POST(_request: Request, { params }: RouteContext) {
   if (!authorization.authorized) return authorization.response;
 
   const { id } = await params;
-  if (!z.uuid().safeParse(id).success) {
-    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
-  }
+  if (!z.uuid().safeParse(id).success) return invalidRequestResponse();
 
-  const result = await startCandidateAttempt(authorization.user.id, id);
-  if (result.status === "not_found") {
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
-  }
-  if (result.status === "unavailable") {
+  try {
+    const attempt = await startCandidateAttempt(authorization.user.id, id);
     return NextResponse.json(
-      { error: "examination_unavailable" },
-      { status: 409 },
+      { attempt },
+      {
+        headers: { "Cache-Control": "no-store" },
+      },
     );
+  } catch (error) {
+    return attemptErrorResponse(error);
   }
-
-  const attempt = await getCandidateAttempt(authorization.user.id, id);
-  return NextResponse.json(
-    { attempt },
-    {
-      status: result.status === "started" ? 201 : 200,
-      headers: { "Cache-Control": "no-store" },
-    },
-  );
 }
