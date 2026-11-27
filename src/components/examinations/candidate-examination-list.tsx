@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CandidateAttemptWorkspace } from "@/components/examinations/candidate-attempt-workspace";
 
 type CandidateExamination = {
   id: string;
@@ -164,10 +165,10 @@ export function CandidateExaminationDetail({
           </p>
         </section>
 
-        <p className="border-l-2 border-[#182d2b] bg-muted/40 px-4 py-4 text-sm leading-6 text-muted-foreground">
-          This phase shows assigned examination details only. Examination
-          questions and attempt controls are not available here.
-        </p>
+        <CandidateAttemptWorkspace
+          availability={examination.availability}
+          examinationId={examination.id}
+        />
       </article>
     </div>
   );

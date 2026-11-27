@@ -7,6 +7,18 @@ async function migrate() {
   loadEnvConfig(process.cwd());
   const { sql } = await import("@/lib/db");
   try {
+    const migrationFiles = [
+      "0001_identity.sql",
+      "0002_examinations.sql",
+      "0003_monitoring.sql",
+    ] as const;
+    const migrations = await Promise.all(
+      migrationFiles.map((file) =>
+        readFile(
+          fileURLToPath(new URL(`../migrations/${file}`, import.meta.url)),
+          "utf8",
+        ),
+      ),
     const migrationsPath = fileURLToPath(
       new URL("../migrations/", import.meta.url),
     );
